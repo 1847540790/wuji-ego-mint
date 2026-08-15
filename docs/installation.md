@@ -63,13 +63,12 @@ and upstream processing backends.
 
 The asset helper downloads the public MINT checkpoint to
 `checkpoints/model.safetensors`. It tries the
-[Hugging Face release](https://huggingface.co/ZZJAsher/mint_v1) first and falls
-back to the [ModelScope release](https://www.modelscope.cn/models/AsherZhu/mint_v1).
-Set `HF_TOKEN` if Hugging Face requires authentication. The ModelScope CLI
-included in both environments provides the fallback. The helper selects only
-`model.safetensors`; it does not fetch optimizer or random-state files. You may
-also place that file manually or pass another compatible checkpoint with
-`--checkpoint`.
+[ModelScope release](https://www.modelscope.cn/models/AsherZhu/mint_v1) first,
+then the [Hugging Face release](https://huggingface.co/ZZJAsher/mint_v1), and
+finally the configured Hugging Face mirror. Set `HF_TOKEN` if Hugging Face
+requires authentication. The helper selects only `model.safetensors`; it does
+not fetch optimizer or random-state files. You may also place that file
+manually or pass another compatible checkpoint with `--checkpoint`.
 
 Do not commit checkpoints to Git. The model configuration must match the
 checkpoint architecture.
@@ -81,9 +80,9 @@ assets/models/lingbot-map.pt
 ```
 
 Obtain it from the official LingBot-Map release and review its model terms.
-The helper below downloads the student checkpoint, that public backbone, and
-the redistributable robot description bundle. Every file is checksum-verified
-before it replaces the destination:
+The public asset helper does not download this optional backbone. It downloads
+only the student checkpoint and the redistributable robot description bundle.
+Every file is checksum-verified before it replaces the destination:
 
 ```bash
 bash scripts/download_assets.sh

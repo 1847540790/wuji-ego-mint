@@ -56,9 +56,9 @@ python -m mint doctor --profile inference
 bash scripts/download_assets.sh
 ```
 
-该脚本会下载并校验三类文件：LingBot-Map 预训练 backbone、本仓库 GitHub Release 中可再分发的机器人手 URDF/mesh，以及 wuji-ego-mint 的 `model.safetensors`。学生模型优先从 [Hugging Face](https://huggingface.co/ZZJAsher/mint_v1) 下载，并以 [ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) 作为备用源。脚本只获取模型权重，不会下载优化器或随机状态；所有大型文件均位于 Git 忽略目录。
+该脚本会下载并校验两类文件：本仓库 GitHub Release 中可再分发的机器人手 URDF/mesh，以及 wuji-ego-mint 的 `model.safetensors`。学生模型优先从 [ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) 下载，再依次尝试 [Hugging Face](https://huggingface.co/ZZJAsher/mint_v1) 官方端点和 HF 镜像。脚本不会下载 LingBot-Map 预训练 backbone，也不会获取优化器或随机状态；所有大型文件均位于 Git 忽略目录。
 
-若 Hugging Face 仓库要求身份验证，请先设置 `HF_TOKEN`；环境中已包含的 ModelScope CLI 会自动作为备用源。MANO 不会被脚本下载，必须按 [安装指南](docs/installation.md) 接受其独立许可证并手动放置。
+若 Hugging Face 仓库要求身份验证，请先设置 `HF_TOKEN`。MANO 不会被脚本下载，必须按 [安装指南](docs/installation.md) 接受其独立许可证并手动放置。
 
 ## 快速开始
 
@@ -88,7 +88,7 @@ python -m mint train --config configs/training/lingbotmap_base.yaml
 
 ```bash
 python -m mint infer \
-  --video data/samples/example.mp4 \
+  --input data/samples/example.mp4 \
   --checkpoint checkpoints/model.safetensors \
   --output artifacts/example
 ```

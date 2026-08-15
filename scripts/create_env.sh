@@ -4,12 +4,11 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROFILE="${1:-full}"
 TORCH_INDEX_URL="${MINT_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
-CONDA_FALLBACK_CHANNELS="${MINT_CONDA_FALLBACK_CHANNELS:-https://conda.anaconda.org/conda-forge https://mirrors.ustc.edu.cn/anaconda/cloud/conda-forge}"
+PYPI_INDEX_URL="${MINT_PYPI_INDEX_URL:-https://pypi.mirrors.ustc.edu.cn/simple}"
+NUMPY_INDEX_URL="${MINT_NUMPY_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+CONDA_FALLBACK_CHANNELS="${MINT_CONDA_FALLBACK_CHANNELS:-https://conda.anaconda.org/conda-forge}"
 PIP_NETWORK_ARGS=(--retries 10 --timeout 120)
-PYPI_SOURCE_ARGS=()
-if [[ -n "${MINT_PYPI_INDEX_URL:-}" ]]; then
-  PYPI_SOURCE_ARGS=(--index-url "$MINT_PYPI_INDEX_URL")
-fi
+PYPI_SOURCE_ARGS=(--index-url "$PYPI_INDEX_URL")
 TORCH_SOURCE_ARGS=(--extra-index-url "$TORCH_INDEX_URL")
 if [[ -n "${MINT_TORCH_FIND_LINKS:-}" ]]; then
   TORCH_SOURCE_ARGS=(--find-links "$MINT_TORCH_FIND_LINKS")
@@ -47,6 +46,12 @@ import sys
 info = json.load(sys.stdin)
 print(os.path.join(info["envs_dirs"][0], sys.argv[1]))
 ' "$ENV_NAME")"
+NUMPY_SPEC="$(sed -n '/^numpy[<>=!~]/ { p; q; }' \
+  "$PROJECT_DIR/environments/requirements-inference.txt")"
+if [[ -z "$NUMPY_SPEC" ]]; then
+  echo "No NumPy requirement was found in requirements-inference.txt." >&2
+  exit 1
+fi
 
 TEMP_CONDA_SPECS=""
 
@@ -127,6 +132,11 @@ else
   fi
   create_environment
 fi
+
+echo "[2/5] Installing $NUMPY_SPEC from the dedicated NumPy index"
+conda run --no-capture-output --name "$ENV_NAME" python -m pip install \
+  --progress-bar on --only-binary=:all: --no-deps \
+  "${PIP_NETWORK_ARGS[@]}" --index-url "$NUMPY_INDEX_URL" "$NUMPY_SPEC"
 
 echo "[2/5] Installing the tested CUDA-enabled PyTorch build (large CUDA wheels)"
 conda run --no-capture-output --name "$ENV_NAME" python -m pip install \

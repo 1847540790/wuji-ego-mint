@@ -2,10 +2,8 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MODEL_DIR="$PROJECT_DIR/assets/models"
 ROBOT_DIR="$PROJECT_DIR/assets/robot_hand"
 CHECKPOINT_DIR="$PROJECT_DIR/checkpoints"
-BACKBONE_URL="https://huggingface.co/robbyant/lingbot-map/resolve/main/lingbot-map.pt"
 ROBOT_URL="https://github.com/1847540790/wuji-ego-mint/releases/download/assets-v0.1.0/wuji-hand-description.tar.gz"
 STUDENT_HF_URL="https://huggingface.co/ZZJAsher/mint_v1/resolve/main/model.safetensors"
 STUDENT_MS_REPO="AsherZhu/mint_v1"
@@ -14,11 +12,10 @@ HF_MIRROR_ENDPOINT="${MINT_HF_MIRROR:-${HF_ENDPOINT:-https://hf-mirror.com}}"
 DOWNLOAD_CONNECT_TIMEOUT="${MINT_DOWNLOAD_CONNECT_TIMEOUT:-15}"
 DOWNLOAD_SPEED_LIMIT="${MINT_DOWNLOAD_SPEED_LIMIT:-1024}"
 DOWNLOAD_SPEED_TIME="${MINT_DOWNLOAD_SPEED_TIME:-30}"
-BACKBONE_SHA256="ee665103348e07e6b826d529b8e61de8f413d5432a4f2e84970d6c8fd2e1cd72"
 ROBOT_SHA256="4594e07774211d21eda7d98ef3f7cf6f3a06f12bc750b505a8bf54765d357e69"
 STUDENT_SHA256="7b2f0aa5dfd00c271bb2f12c841ccfcc70e81e4052d413eacb5fb42a1bcc36c8"
 
-mkdir -p "$MODEL_DIR" "$ROBOT_DIR" "$CHECKPOINT_DIR"
+mkdir -p "$ROBOT_DIR" "$CHECKPOINT_DIR"
 
 verify() {
   local destination="$1"
@@ -97,8 +94,36 @@ download_verified() {
 
 download_student() {
   local destination="$CHECKPOINT_DIR/model.safetensors"
+  local staging="$CHECKPOINT_DIR/.modelscope-download"
   local hf_header=()
   local hf_token="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}"
+
+  if [[ -s "$destination" ]] && verify "$destination" "$STUDENT_SHA256"; then
+    echo "Verified existing asset: ${destination#"$PROJECT_DIR/"}"
+    return
+  fi
+
+  echo "Downloading checkpoints/model.safetensors from ModelScope"
+  if command -v modelscope >/dev/null 2>&1; then
+    mkdir -p "$staging"
+    if MODELSCOPE_DOWNLOAD_PARALLELS="${MODELSCOPE_DOWNLOAD_PARALLELS:-8}" \
+      modelscope download --model "$STUDENT_MS_REPO" \
+      --revision "$STUDENT_MS_REVISION" \
+      --local_dir "$staging" model.safetensors; then
+      if verify "$staging/model.safetensors" "$STUDENT_SHA256"; then
+        mv -f "$staging/model.safetensors" "$destination"
+        return
+      fi
+      echo "ModelScope checkpoint checksum verification failed." >&2
+      rm -f "$staging/model.safetensors"
+    else
+      echo "ModelScope download failed." >&2
+    fi
+  else
+    echo "ModelScope CLI is unavailable." >&2
+  fi
+
+  echo "ModelScope was unavailable; trying Hugging Face and its mirror."
   if [[ -n "$hf_token" ]]; then
     hf_header=(--header "Authorization: Bearer $hf_token")
   fi
@@ -107,38 +132,15 @@ download_student() {
     return
   fi
 
-  echo "Hugging Face download was unavailable; trying ModelScope."
-  if ! command -v modelscope >/dev/null 2>&1; then
-    echo "Install ModelScope or provide HF_TOKEN, then run this script again." >&2
-    return 1
-  fi
-
-  local staging="$CHECKPOINT_DIR/.modelscope-download"
-  mkdir -p "$staging"
-  if ! MODELSCOPE_DOWNLOAD_PARALLELS="${MODELSCOPE_DOWNLOAD_PARALLELS:-8}" \
-    modelscope download --model "$STUDENT_MS_REPO" \
-    --revision "$STUDENT_MS_REVISION" \
-    --local_dir "$staging" model.safetensors; then
-    echo "ModelScope download failed." >&2
-    rm -f "$staging/model.safetensors"
-    return 1
-  fi
-  if ! verify "$staging/model.safetensors" "$STUDENT_SHA256"; then
-    echo "ModelScope checkpoint checksum verification failed." >&2
-    rm -f "$staging/model.safetensors"
-    return 1
-  fi
-  mv -f "$staging/model.safetensors" "$destination"
+  return 1
 }
 
-echo "[1/3] LingBot-Map backbone"
-download_verified "$BACKBONE_URL" "$MODEL_DIR/lingbot-map.pt" "$BACKBONE_SHA256"
-echo "[2/3] Robot description"
+echo "[1/2] Robot description"
 download_verified "$ROBOT_URL" \
   "$ROBOT_DIR/wuji-hand-description.tar.gz" "$ROBOT_SHA256"
-echo "[3/3] MINT student checkpoint"
+echo "[2/2] MINT student checkpoint"
 download_student
 
 tar -xzf "$ROBOT_DIR/wuji-hand-description.tar.gz" -C "$ROBOT_DIR"
-echo "Backbone, student checkpoint, and robot assets are ready."
+echo "Student checkpoint and robot assets are ready."
 echo "MANO is not downloaded. Follow docs/installation.md and accept its license."

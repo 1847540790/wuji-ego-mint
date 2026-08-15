@@ -73,18 +73,18 @@ CUDA, MANO, checkpoints, and offline installation details.
 bash scripts/download_assets.sh
 ```
 
-The script downloads and verifies the LingBot-Map backbone, the redistributable
-robot-hand URDF/mesh bundle from this repository's GitHub Release, and the
-wuji-ego-mint `model.safetensors`. It tries
-[Hugging Face](https://huggingface.co/ZZJAsher/mint_v1) first and uses
-[ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) as a fallback.
+The script downloads and verifies the redistributable robot-hand URDF/mesh
+bundle from this repository's GitHub Release and the wuji-ego-mint
+`model.safetensors`. It does not download the optional LingBot-Map backbone. It tries
+[ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) first, followed
+by the official [Hugging Face](https://huggingface.co/ZZJAsher/mint_v1)
+endpoint and the configured Hugging Face mirror.
 Only the model weights are selected; optimizer and random-state files are never
 downloaded. All large assets are written to Git-ignored directories.
 
-Set `HF_TOKEN` when Hugging Face authentication is required. The ModelScope CLI
-included in the environment is used automatically as the fallback source. MANO
-is never downloaded by this script; follow [Installation](docs/installation.md)
-to accept its separate license and place it manually.
+Set `HF_TOKEN` when Hugging Face authentication is required. MANO is never
+downloaded by this script; follow [Installation](docs/installation.md) to accept
+its separate license and place it manually.
 
 ## Quick start
 
@@ -116,7 +116,7 @@ is the recommended first configuration check.
 
 ```bash
 python -m mint infer \
-  --video data/samples/example.mp4 \
+  --input data/samples/example.mp4 \
   --checkpoint checkpoints/model.safetensors \
   --output artifacts/example
 ```
