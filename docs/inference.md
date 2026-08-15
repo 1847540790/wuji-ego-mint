@@ -3,7 +3,7 @@
 ## Command-line inference
 
 ```bash
-mint infer \
+python -m mint infer \
   --input data/samples/epic-kitchens-01.mp4 \
   --checkpoint checkpoints/model.safetensors \
   --output artifacts/example
@@ -19,7 +19,7 @@ needed. Use `--max-frames` and `--target-fps` to control latency and memory.
 ## Web viewer
 
 ```bash
-mint viewer \
+python -m mint viewer \
   --samples data/samples \
   --checkpoint checkpoints/model.safetensors \
   --open
@@ -48,4 +48,3 @@ ssh -L 7860:127.0.0.1:7860 user@remote-host
 
 Exposing `--host 0.0.0.0` requires authentication and TLS at a reverse proxy.
 The built-in development server is not a public production server.
-

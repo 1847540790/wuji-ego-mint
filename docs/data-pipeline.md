@@ -8,7 +8,7 @@ scheduling and resumable manifests.
 
 ```bash
 conda activate mint
-mint doctor --profile data --strict
+python -m mint doctor --profile data --strict
 ```
 
 Start with one approved clip and one GPU. Verify disk capacity for intermediate
@@ -17,7 +17,7 @@ frames, model predictions, and final Parquet/video output.
 ## Run
 
 ```bash
-mint pipeline \
+python -m mint pipeline \
   --input data/samples/epic-kitchens-01.mp4 \
   --output output/processed \
   --num-gpus 1
@@ -33,7 +33,7 @@ The pipeline writes a manifest under its timestamped output directory. Resume
 the same output rather than copying partial files:
 
 ```bash
-mint pipeline --input data/samples --resume output/processed/<run-directory>
+python -m mint pipeline --input data/samples --resume output/processed/<run-directory>
 ```
 
 Use `--retry-failed` only after addressing the recorded error. Retrying a
@@ -51,4 +51,3 @@ The public contract consists of:
 No output should contain source-system mount names, operator usernames, cloud
 credentials, or unrestricted source paths. Run the privacy audit before using
 an output as a release artifact.
-

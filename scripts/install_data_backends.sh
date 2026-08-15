@@ -54,6 +54,5 @@ Source backends are installed. Model assets are intentionally not downloaded.
 Follow docs/installation.md to place each checkpoint and the licensed MANO
 files, then run:
 
-  mint doctor --profile data --strict
+  python -m mint doctor --profile data --strict
 NEXT
-

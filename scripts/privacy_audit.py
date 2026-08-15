@@ -15,7 +15,7 @@ LOCALIZED_READMES = {Path("README.md")}
 TEXT_SUFFIXES = {
     ".css", ".html", ".ini", ".js", ".json", ".md", ".py", ".sh", ".toml", ".txt", ".yaml", ".yml"
 }
-SKIP_PARTS = {".git", ".cache", ".pytest_cache", "artifacts", "output", "third_party"}
+SKIP_PARTS = {".git", ".cache", "artifacts", "output", "third_party"}
 
 
 @dataclass(frozen=True)

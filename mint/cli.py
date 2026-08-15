@@ -29,9 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     commands = ("pipeline", "train", "infer", "viewer", "doctor")
     parser = argparse.ArgumentParser(
-        prog="mint",
+        prog="python -m mint",
         description="MINT egocentric video toolkit",
-        epilog="Use 'mint <command> --help' for command-specific options.",
+        epilog="Use 'python -m mint <command> --help' for command-specific options.",
     )
     parser.add_argument("command", nargs="?", choices=commands)
     if not raw or raw[0] in {"-h", "--help"}:

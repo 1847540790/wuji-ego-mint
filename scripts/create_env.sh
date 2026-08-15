@@ -3,6 +3,16 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROFILE="${1:-full}"
+TORCH_INDEX_URL="${MINT_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
+PIP_NETWORK_ARGS=(--retries 10 --timeout 120)
+PYPI_SOURCE_ARGS=()
+if [[ -n "${MINT_PYPI_INDEX_URL:-}" ]]; then
+  PYPI_SOURCE_ARGS=(--index-url "$MINT_PYPI_INDEX_URL")
+fi
+TORCH_SOURCE_ARGS=(--extra-index-url "$TORCH_INDEX_URL")
+if [[ -n "${MINT_TORCH_FIND_LINKS:-}" ]]; then
+  TORCH_SOURCE_ARGS=(--find-links "$MINT_TORCH_FIND_LINKS")
+fi
 
 case "$PROFILE" in
   full)
@@ -28,7 +38,16 @@ case "$PROFILE" in
     ;;
 esac
 
-if conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
+ENV_PREFIX="$(conda info --json | python -c '
+import json
+import os
+import sys
+
+info = json.load(sys.stdin)
+print(os.path.join(info["envs_dirs"][0], sys.argv[1]))
+' "$ENV_NAME")"
+
+if conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME" || [[ -e "$ENV_PREFIX" ]]; then
   echo "Conda environment '$ENV_NAME' already exists." >&2
   echo "Remove it explicitly before requesting a clean rebuild:" >&2
   echo "  conda env remove --name $ENV_NAME" >&2
@@ -40,11 +59,13 @@ conda env create --file "$ENV_FILE"
 
 echo "Installing the tested CUDA-enabled PyTorch build"
 conda run --name "$ENV_NAME" python -m pip install \
+  "${PIP_NETWORK_ARGS[@]}" "${PYPI_SOURCE_ARGS[@]}" "${TORCH_SOURCE_ARGS[@]}" \
   --requirement "$PROJECT_DIR/environments/requirements-torch.txt"
 
 for requirement in "${REQUIREMENTS[@]}"; do
   echo "Installing $requirement"
   conda run --name "$ENV_NAME" python -m pip install \
+    "${PIP_NETWORK_ARGS[@]}" "${PYPI_SOURCE_ARGS[@]}" \
     --requirement "$PROJECT_DIR/environments/$requirement"
 done
 
@@ -52,9 +73,9 @@ echo "Installing MINT in editable mode without dependency re-resolution"
 conda run --name "$ENV_NAME" python -m pip install --no-deps --editable "$PROJECT_DIR"
 
 echo "Running the environment smoke test"
-conda run --name "$ENV_NAME" mint doctor --profile "$DOCTOR_PROFILE" --strict
+conda run --cwd "$PROJECT_DIR" --name "$ENV_NAME" \
+  python -m mint doctor --profile "$DOCTOR_PROFILE" --strict
 
 echo
 echo "Environment '$ENV_NAME' is ready."
 echo "Activate it with: conda activate $ENV_NAME"
-

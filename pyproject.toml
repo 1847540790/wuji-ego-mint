@@ -20,6 +20,7 @@ classifiers = [
 ]
 dependencies = [
   "Flask==3.1.3",
+  "modelscope==1.37.1",
   "numpy==1.26.4",
   "opencv-python-headless==4.11.0.86",
   "PyYAML==6.0.3",
@@ -47,13 +48,8 @@ data = [
 dev = [
   "build==1.3.0",
   "pre-commit==4.5.1",
-  "pytest==9.1.1",
-  "pytest-cov==7.0.0",
   "ruff==0.15.5",
 ]
-
-[project.scripts]
-mint = "mint.cli:main"
 
 [project.urls]
 Documentation = "https://github.com/1847540790/wuji-ego-mint#readme"
@@ -65,10 +61,6 @@ include = ["mint*"]
 
 [tool.setuptools.package-data]
 "mint.viewer" = ["static/*.html", "static/*.css", "static/*.js"]
-
-[tool.pytest.ini_options]
-addopts = "-ra"
-testpaths = ["tests", "model_train/tests"]
 
 [tool.ruff]
 target-version = "py310"

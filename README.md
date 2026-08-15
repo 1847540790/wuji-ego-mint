@@ -4,17 +4,17 @@
 
 MINT 是一个面向第一视角视频的数据处理、相机与手部模型训练、推理和结果可视化工具包。项目将 Ray 数据管线与训练代码统一封装为稳定、可复现的命令行接口，便于研究者从零安装并快速验证。
 
-公开仓库不会包含数据集、模型权重、MANO 资产、访问凭证、云平台启动脚本、私有路径或基础设施配置。
+公开 Git 仓库不会包含数据集、模型权重、MANO 资产、访问凭证、云平台启动脚本、私有路径或基础设施配置。公开学生模型托管于 Hugging Face 和 ModelScope，由下载脚本保存到本地忽略目录。
 
 ## 功能范围
 
 | 模块 | 命令 | 用途 |
 | --- | --- | --- |
-| 数据处理 | `mint pipeline` | 使用 Ray 将视频转换为可训练的 LeRobot v3 数据集。 |
-| 模型训练 | `mint train` | 使用 Accelerate/DDP 训练相机与手部学生模型。 |
-| 模型推理 | `mint infer` | 对单个视频执行纯预测推理并导出渲染视频和数值结果。 |
-| 结果查看 | `mint viewer` | 在简洁的本地 Web 界面中浏览已审核样例和预测结果。 |
-| 环境检查 | `mint doctor` | 检查依赖、可选后端、模型资产和运行环境。 |
+| 数据处理 | `python -m mint pipeline` | 使用 Ray 将视频转换为可训练的 LeRobot v3 数据集。 |
+| 模型训练 | `python -m mint train` | 使用 Accelerate/DDP 训练相机与手部学生模型。 |
+| 模型推理 | `python -m mint infer` | 对单个视频执行纯预测推理并导出渲染视频和数值结果。 |
+| 结果查看 | `python -m mint viewer` | 在简洁的本地 Web 界面中浏览已审核样例和预测结果。 |
+| 环境检查 | `python -m mint doctor` | 检查依赖、可选后端、模型资产和运行环境。 |
 
 Viewer 不会读取或展示真值，也不能浏览配置样例目录之外的文件。这是项目明确的隐私与安全边界。
 
@@ -29,14 +29,14 @@ git clone git@github.com:1847540790/wuji-ego-mint.git
 cd wuji-ego-mint
 bash scripts/create_env.sh full
 conda activate mint
-mint doctor --profile full
+python -m mint doctor --profile full
 ```
 
 完整环境包含训练和 Ray 数据管线依赖。GeoCalib、MoGe、Mega-SAM、HaWoR 等研究后端及其权重不随仓库发布，确认各自许可证后再单独安装：
 
 ```bash
 bash scripts/install_data_backends.sh
-mint doctor --profile data
+python -m mint doctor --profile data
 ```
 
 ### 最小推理环境
@@ -44,7 +44,7 @@ mint doctor --profile data
 ```bash
 bash scripts/create_env.sh inference
 conda activate mint-inference
-mint doctor --profile inference
+python -m mint doctor --profile inference
 ```
 
 最小环境不安装 Ray、数据转换组件、训练日志组件和数据管线研究后端。CUDA、MANO、权重和离线安装说明见 [安装指南](docs/installation.md)。
@@ -55,28 +55,30 @@ mint doctor --profile inference
 bash scripts/download_assets.sh
 ```
 
-该脚本从 LingBot-Map 官方 Hugging Face 仓库下载预训练 backbone，并从本仓库 GitHub Release 下载可再分发的机器人手 URDF/mesh 资产。训练得到的 wuji-ego-mint 学生模型 checkpoint 需要单独发布，并通过 `--checkpoint` 指定；大型权重不会提交到 Git。
+该脚本会下载并校验三类文件：LingBot-Map 预训练 backbone、本仓库 GitHub Release 中可再分发的机器人手 URDF/mesh，以及 wuji-ego-mint 的 `model.safetensors`。学生模型优先从 [Hugging Face](https://huggingface.co/ZZJAsher/mint_v1) 下载，并以 [ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) 作为备用源。脚本只获取模型权重，不会下载优化器或随机状态；所有大型文件均位于 Git 忽略目录。
+
+若 Hugging Face 仓库要求身份验证，请先设置 `HF_TOKEN`；环境中已包含的 ModelScope CLI 会自动作为备用源。MANO 不会被脚本下载，必须按 [安装指南](docs/installation.md) 接受其独立许可证并手动放置。
 
 ## 快速开始
 
 ### 1. 处理已审核视频
 
 ```bash
-mint pipeline \
+python -m mint pipeline \
   --input data/samples \
   --output output/processed \
   --num-gpus 1
 ```
 
-完整管线需要较多 GPU 资源。长任务开始前请运行 `mint doctor --profile data`，并先使用一段短且不含敏感信息的视频验证流程。
+完整管线需要较多 GPU 资源。长任务开始前请运行 `python -m mint doctor --profile data`，并先使用一段短且不含敏感信息的视频验证流程。
 
 ### 2. 训练模型
 
 在 `configs/training/lingbotmap_base.yaml` 中设置数据集根目录，然后运行：
 
 ```bash
-mint train --config configs/training/lingbotmap_base.yaml --inspect
-mint train --config configs/training/lingbotmap_base.yaml
+python -m mint train --config configs/training/lingbotmap_base.yaml --inspect
+python -m mint train --config configs/training/lingbotmap_base.yaml
 ```
 
 `--inspect` 不读取数据集和权重，仅构建模型并输出结构，建议将它作为训练配置的第一项检查。
@@ -84,7 +86,7 @@ mint train --config configs/training/lingbotmap_base.yaml
 ### 3. 执行推理
 
 ```bash
-mint infer \
+python -m mint infer \
   --video data/samples/example.mp4 \
   --checkpoint checkpoints/model.safetensors \
   --output artifacts/example
@@ -93,7 +95,7 @@ mint infer \
 ### 4. 启动 Viewer
 
 ```bash
-mint viewer \
+python -m mint viewer \
   --samples data/samples \
   --checkpoint checkpoints/model.safetensors \
   --config configs/training/lingbotmap_base.yaml
@@ -129,7 +131,6 @@ mint/
 |-- modules/          数据管线模型适配层
 |-- ray_pipeline/     Ray 调度、Actor、Manifest 和数据导出
 |-- scripts/          环境、资产、隐私和样例处理脚本
-|-- tests/            快速接口与冒烟测试
 `-- third_party/      仅保留清单；第三方源码和权重默认忽略
 ```
 

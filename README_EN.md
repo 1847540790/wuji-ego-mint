@@ -6,19 +6,21 @@ MINT is an open toolkit for egocentric video processing, camera-and-hand model
 training, and prediction-only visual inspection. It packages the Ray data
 pipeline and training stack behind a small, reproducible command surface.
 
-The public repository is self-contained at the orchestration layer and
+The public Git repository is self-contained at the orchestration layer and
 intentionally excludes datasets, model checkpoints, MANO assets, credentials,
-cloud-specific launchers, and private infrastructure settings.
+cloud-specific launchers, and private infrastructure settings. Public student
+weights are hosted on Hugging Face and ModelScope and are downloaded only into
+a local Git-ignored directory.
 
 ## What is included
 
 | Area | Entry point | Purpose |
 | --- | --- | --- |
-| Data | `mint pipeline` | Process videos into training-ready LeRobot v3 datasets with Ray. |
-| Train | `mint train` | Train the camera-and-hand student model with Accelerate/DDP. |
-| Infer | `mint infer` | Run prediction-only inference and export overlays plus numeric results. |
-| View | `mint viewer` | Browse approved samples and inspect predictions in a focused web interface. |
-| Audit | `mint doctor` | Verify the environment, optional backends, assets, and GPU runtime. |
+| Data | `python -m mint pipeline` | Process videos into training-ready LeRobot v3 datasets with Ray. |
+| Train | `python -m mint train` | Train the camera-and-hand student model with Accelerate/DDP. |
+| Infer | `python -m mint infer` | Run prediction-only inference and export overlays plus numeric results. |
+| View | `python -m mint viewer` | Browse approved samples and inspect predictions in a focused web interface. |
+| Audit | `python -m mint doctor` | Verify the environment, optional backends, assets, and GPU runtime. |
 
 The viewer never reads ground truth and cannot browse outside its configured
 sample directory. This is a deliberate privacy and security boundary.
@@ -35,7 +37,7 @@ git clone git@github.com:1847540790/wuji-ego-mint.git
 cd wuji-ego-mint
 bash scripts/create_env.sh full
 conda activate mint
-mint doctor --profile full
+python -m mint doctor --profile full
 ```
 
 The full profile installs the training and Ray data-pipeline dependencies.
@@ -44,7 +46,7 @@ after reviewing their licenses:
 
 ```bash
 bash scripts/install_data_backends.sh
-mint doctor --profile data
+python -m mint doctor --profile data
 ```
 
 ### Minimal inference environment
@@ -52,7 +54,7 @@ mint doctor --profile data
 ```bash
 bash scripts/create_env.sh inference
 conda activate mint-inference
-mint doctor --profile inference
+python -m mint doctor --profile inference
 ```
 
 The inference profile omits Ray, dataset conversion, training loggers, and
@@ -65,24 +67,31 @@ CUDA, MANO, checkpoints, and offline installation details.
 bash scripts/download_assets.sh
 ```
 
-The script downloads the pretrained backbone from the official LingBot-Map
-Hugging Face repository and the redistributable robot-hand URDF/mesh bundle
-from this repository's GitHub Release. A trained wuji-ego-mint student
-checkpoint must be published separately and passed with `--checkpoint`; large
-model weights are never committed to Git.
+The script downloads and verifies the LingBot-Map backbone, the redistributable
+robot-hand URDF/mesh bundle from this repository's GitHub Release, and the
+wuji-ego-mint `model.safetensors`. It tries
+[Hugging Face](https://huggingface.co/ZZJAsher/mint_v1) first and uses
+[ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) as a fallback.
+Only the model weights are selected; optimizer and random-state files are never
+downloaded. All large assets are written to Git-ignored directories.
+
+Set `HF_TOKEN` when Hugging Face authentication is required. The ModelScope CLI
+included in the environment is used automatically as the fallback source. MANO
+is never downloaded by this script; follow [Installation](docs/installation.md)
+to accept its separate license and place it manually.
 
 ## Quick start
 
 ### Process approved videos
 
 ```bash
-mint pipeline \
+python -m mint pipeline \
   --input data/samples \
   --output output/processed \
   --num-gpus 1
 ```
 
-Run `mint doctor --profile data` before a long job and begin with one short,
+Run `python -m mint doctor --profile data` before a long job and begin with one short,
 non-sensitive clip.
 
 ### Train
@@ -90,8 +99,8 @@ non-sensitive clip.
 Set the dataset root in `configs/training/lingbotmap_base.yaml`, then run:
 
 ```bash
-mint train --config configs/training/lingbotmap_base.yaml --inspect
-mint train --config configs/training/lingbotmap_base.yaml
+python -m mint train --config configs/training/lingbotmap_base.yaml --inspect
+python -m mint train --config configs/training/lingbotmap_base.yaml
 ```
 
 `--inspect` constructs the model without loading a dataset or checkpoint and
@@ -100,7 +109,7 @@ is the recommended first configuration check.
 ### Run inference
 
 ```bash
-mint infer \
+python -m mint infer \
   --video data/samples/example.mp4 \
   --checkpoint checkpoints/model.safetensors \
   --output artifacts/example
@@ -109,7 +118,7 @@ mint infer \
 ### Start the viewer
 
 ```bash
-mint viewer \
+python -m mint viewer \
   --samples data/samples \
   --checkpoint checkpoints/model.safetensors \
   --config configs/training/lingbotmap_base.yaml
@@ -150,7 +159,6 @@ mint/
 |-- modules/          Data-pipeline model adapters
 |-- ray_pipeline/     Ray scheduling, actors, manifests, and export
 |-- scripts/          Reproducible setup, asset, privacy, and sample tools
-|-- tests/            Fast public contract and smoke tests
 `-- third_party/      Manifest only; upstream source and weights are ignored
 ```
 

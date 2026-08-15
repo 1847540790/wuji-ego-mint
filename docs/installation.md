@@ -17,19 +17,24 @@ practical training and model inference require a CUDA GPU.
 ```bash
 bash scripts/create_env.sh full
 conda activate mint
-mint doctor --profile full --strict
+python -m mint doctor --profile full --strict
 ```
 
 This performs a clean solve from `environments/mint.yml`, then installs each
 pinned requirements layer. It never clones another local environment. If the
 environment already exists, the script exits rather than mutating it silently.
+For a network that cannot reach the official PyTorch wheel CDN, set
+`MINT_TORCH_INDEX_URL` for a compatible package index, or
+`MINT_TORCH_FIND_LINKS` for a trusted flat wheel mirror, before running the
+script. `MINT_PYPI_INDEX_URL` can override a broken system-level PyPI mirror.
+The public defaults remain PyPI and the official CUDA 12.8 index.
 
 ## Clean inference environment
 
 ```bash
 bash scripts/create_env.sh inference
 conda activate mint-inference
-mint doctor --profile inference --strict
+python -m mint doctor --profile inference --strict
 ```
 
 The inference profile includes PyTorch, OpenCV, Flask, numerical dependencies,
@@ -38,9 +43,18 @@ and upstream processing backends.
 
 ## Model checkpoint
 
-Place a released MINT checkpoint at `checkpoints/model.safetensors`, or pass an
-explicit path to `--checkpoint`. Do not commit checkpoints to Git. The model
-configuration must match the checkpoint architecture.
+The asset helper downloads the public MINT checkpoint to
+`checkpoints/model.safetensors`. It tries the
+[Hugging Face release](https://huggingface.co/ZZJAsher/mint_v1) first and falls
+back to the [ModelScope release](https://www.modelscope.cn/models/AsherZhu/mint_v1).
+Set `HF_TOKEN` if Hugging Face requires authentication. The ModelScope CLI
+included in both environments provides the fallback. The helper selects only
+`model.safetensors`; it does not fetch optimizer or random-state files. You may
+also place that file manually or pass another compatible checkpoint with
+`--checkpoint`.
+
+Do not commit checkpoints to Git. The model configuration must match the
+checkpoint architecture.
 
 The optional pretrained LingBot-Map backbone belongs at:
 
@@ -49,8 +63,9 @@ assets/models/lingbot-map.pt
 ```
 
 Obtain it from the official LingBot-Map release and review its model terms.
-The helper below downloads that public backbone and the redistributable robot
-description bundle:
+The helper below downloads the student checkpoint, that public backbone, and
+the redistributable robot description bundle. Every file is checksum-verified
+before it replaces the destination:
 
 ```bash
 bash scripts/download_assets.sh
@@ -87,7 +102,7 @@ Run the interactive installer only after reviewing the restrictions listed in
 
 ```bash
 bash scripts/install_data_backends.sh
-mint doctor --profile data --strict
+python -m mint doctor --profile data --strict
 ```
 
 Some native CUDA extensions used by the full processing chain must be compiled

@@ -12,7 +12,7 @@ configuration in an ignored file when paths reveal infrastructure details.
 ## Inspect first
 
 ```bash
-mint train --config configs/training/lingbotmap_base.yaml --inspect
+python -m mint train --config configs/training/lingbotmap_base.yaml --inspect
 ```
 
 Inspection builds the model on CPU, prints the module and freeze structure, and
@@ -22,7 +22,7 @@ configuration errors without allocating training GPUs.
 ## Train
 
 ```bash
-mint train --config configs/training/lingbotmap_base.yaml
+python -m mint train --config configs/training/lingbotmap_base.yaml
 ```
 
 Accelerate selects the visible GPU topology. For reproducibility, the public
@@ -42,4 +42,3 @@ an environment variable. Never store an API key in a YAML or Markdown file.
 
 These options are intentionally exclusive. Keep the resolved configuration
 snapshot beside each run to make later inference reproducible.
-
