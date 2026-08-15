@@ -1,0 +1,20 @@
+schema_version: 1
+components:
+  geocalib:
+    repository: https://github.com/cvg/GeoCalib.git
+    revision: main
+    license: Apache-2.0
+  moge:
+    repository: https://github.com/microsoft/MoGe.git
+    revision: main
+    license: MIT
+  mega-sam:
+    repository: https://github.com/mega-sam/mega-sam.git
+    revision: main
+    license: Apache-2.0
+  hawor:
+    repository: https://github.com/ThunderVVV/HaWoR.git
+    revision: main
+    license: CC-BY-NC-ND-4.0
+    restricted: true
+

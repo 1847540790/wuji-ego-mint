@@ -1,0 +1,15 @@
+samples: data/samples
+artifacts: artifacts/viewer
+model:
+  config: configs/training/lingbotmap_base.yaml
+  checkpoint: checkpoints/model.safetensors
+  devices: auto
+inference:
+  max_frames: 160
+  target_fps: 15.0
+  camera_mode: chunked
+  hand_mode: smooth
+viewer:
+  host: 127.0.0.1
+  port: 7860
+

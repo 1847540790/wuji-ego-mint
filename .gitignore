@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments and editors
+.env
+.venv/
+.idea/
+.vscode/
+
+# Runtime output
+artifacts/
+output/
+logs/
+ray_results/
+.cache/
+
+# Models and licensed assets
+checkpoints/
+weights/
+assets/mano/
+assets/models/
+assets/robot_hand/
+third_party/*/
+!third_party/README.md
+!third_party/manifest.yaml
+
+# Samples are added only after the privacy and license review.
+data/samples/*
+!data/samples/README.md
+!data/samples/manifest.example.json
+
+# Credentials and common model artifacts
+*.key
+*.pem
+*.p12
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+wandb/
