@@ -12,6 +12,16 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from .acceleration import (
+    COMPILE_MODES,
+    FP8_MODES,
+    apply_dynamic_fp8,
+    compile_hotspots,
+    normalize_optional_mode,
+    prepare_allocator_for_compile,
+    resolve_compile_mode,
+    resolve_fp8_mode,
+)
 from .base import FullSequenceTooLong, InferenceCancelled  # noqa: F401
 
 
@@ -217,11 +227,22 @@ class StudentEngine:
 
     def __init__(self, config_path: str, ckpt: str | None = None,
                  device: str | None = None, window: int | None = None,
-                 devices=None, full_max_frames: int | None = None):
+                 devices=None, full_max_frames: int | None = None,
+                 compile_mode: str | None = None, fp8_mode: str | None = None):
+        self.compile_mode_requested = normalize_optional_mode(
+            compile_mode, choices=COMPILE_MODES, name="compile_mode"
+        )
+        self.fp8_mode_requested = normalize_optional_mode(
+            fp8_mode, choices=FP8_MODES, name="fp8_mode"
+        )
+        allocator_changed = prepare_allocator_for_compile(self.compile_mode_requested)
         _ensure_model_train_on_path()
         import torch
         from models import build_model                       # noqa: E402  (model_train)
         from utils.weight_loader import load_state_dict_file  # noqa: E402
+
+        if allocator_changed:
+            print("[inference] disabled expandable_segments for CUDA Graph capture", flush=True)
 
         with open(_abs(config_path)) as f:
             cfg = yaml.safe_load(f)
@@ -258,6 +279,22 @@ class StudentEngine:
         requested_devices = _resolve_devices(device=device, devices=devices)
         resolved_devices = [torch.device(item) for item in requested_devices]
         self.device = resolved_devices[0]
+        self.compile_mode, compile_reason = resolve_compile_mode(
+            self.compile_mode_requested, resolved_devices
+        )
+        self.fp8_mode, fp8_reason = resolve_fp8_mode(
+            self.fp8_mode_requested, resolved_devices, self.compile_mode
+        )
+        if self.compile_mode_requested == "auto":
+            print(
+                f"[inference] compile auto -> {self.compile_mode or 'off'} ({compile_reason})",
+                flush=True,
+            )
+        if self.fp8_mode_requested == "auto":
+            print(
+                f"[inference] FP8 auto -> {self.fp8_mode or 'off'} ({fp8_reason})",
+                flush=True,
+            )
         cuda_memories = [
             torch.cuda.get_device_properties(item).total_memory
             for item in resolved_devices
@@ -321,6 +358,57 @@ class StudentEngine:
             self.devices.append(replica_device)
 
         del sd
+        self._fp8_conversions = []
+        if self.fp8_mode == "dynamic":
+            for replica, replica_device in zip(self.models, self.devices):
+                conversion = apply_dynamic_fp8(replica, replica_device)
+                self._fp8_conversions.append(conversion)
+            print(
+                f"[inference] FP8 dynamic enabled: "
+                f"{len(self._fp8_conversions[0].module_names)} Linear layers per replica, "
+                f"torchao={self._fp8_conversions[0].torchao_version}",
+                flush=True,
+            )
+
+        self._compiled_module_names = []
+        if self.compile_mode is not None:
+            # Populate RoPE caches eagerly so captured graphs do not own mutable
+            # cache tensors that are overwritten on replay.
+            for replica, replica_device in zip(self.models, self.devices):
+                if replica_device.type != "cuda":
+                    continue
+                backbone = getattr(replica, "backbone", None)
+                aggregator = getattr(backbone, "aggregator", None)
+                kv_cache = getattr(aggregator, "kv_cache", None)
+                cache_state = None
+                if getattr(aggregator, "use_sdpa", False) and isinstance(kv_cache, dict):
+                    backbone.clean_kv_cache()
+                    cache_state = kv_cache
+                    aggregator.kv_cache = None
+                try:
+                    warm_images = torch.zeros(
+                        (1, self.window, 3, *self.size_hw),
+                        dtype=torch.float32,
+                        device=replica_device,
+                    )
+                    with torch.inference_mode(), torch.autocast(
+                            device_type="cuda", dtype=torch.bfloat16):
+                        replica({"images": warm_images})
+                    torch.cuda.synchronize(replica_device)
+                    del warm_images
+                finally:
+                    if cache_state is not None:
+                        aggregator.kv_cache = cache_state
+                        backbone.clean_kv_cache()
+            self._compiled_module_names = [
+                compile_hotspots(replica, self.compile_mode) for replica in self.models
+            ]
+            print(
+                f"[inference] torch.compile enabled: mode={self.compile_mode}, "
+                f"hotspots={len(self._compiled_module_names[0])} per replica, "
+                "dynamic=False",
+                flush=True,
+            )
         self._model_locks = [threading.Lock() for _ in self.models]
         self._forward_pool = (
             ThreadPoolExecutor(max_workers=len(self.models), thread_name_prefix="gpu-forward")
@@ -340,7 +428,66 @@ class StudentEngine:
     def parallel_device_names(self) -> list[str]:
         return [str(item) for item in getattr(self, "devices", [self.device])]
 
+    @property
+    def supports_weight_reload(self) -> bool:
+        return self.fp8_mode is None and self.compile_mode is None
+
+    @property
+    def acceleration_metadata(self) -> dict:
+        return {
+            "compile_mode_requested": self.compile_mode_requested or "off",
+            "compile_mode": self.compile_mode or "off",
+            "fp8_mode_requested": self.fp8_mode_requested or "off",
+            "fp8_mode": self.fp8_mode or "off",
+        }
+
+    def _effective_window_batch_size(self, requested_batch: int) -> int:
+        """Keep every compiled model replica on its local batch-one shape."""
+        requested_batch = max(1, int(requested_batch))
+        if self.compile_mode is None:
+            return requested_batch
+        return min(requested_batch, self.parallel_device_count)
+
+    def warmup_acceleration(self, window_batch_size: int = 1, passes: int = 2) -> dict:
+        """Compile and capture the fixed full-window shape before measured inference."""
+        import time
+        import torch
+
+        requested_batch = max(1, int(window_batch_size))
+        batch = self._effective_window_batch_size(requested_batch)
+        passes = max(1, int(passes))
+        frame_count = self.window + (batch - 1) * max(1, self.window - 1)
+        frames = torch.zeros(
+            (frame_count, 3, *self.size_hw), dtype=torch.float32, device="cpu"
+        )
+        started = time.perf_counter()
+        last_timings = {}
+        for _ in range(passes):
+            output = self.predict(
+                frames,
+                cam_mode="chunked",
+                window_batch_size=batch,
+                hand_mode="hard",
+                preprocessed=True,
+            )
+            last_timings = dict(output.get("_timings") or {})
+        for replica_device in self.devices:
+            if replica_device.type == "cuda":
+                torch.cuda.synchronize(replica_device)
+        return {
+            "passes": passes,
+            "frames": frame_count,
+            "requested_window_batch_size": requested_batch,
+            "window_batch_size": batch,
+            "seconds": time.perf_counter() - started,
+            "last_timings": last_timings,
+        }
+
     def reload(self, ckpt: str):
+        if not self.supports_weight_reload:
+            raise RuntimeError(
+                "FP8/torch.compile engines must be rebuilt when changing checkpoints"
+            )
         from utils.weight_loader import load_state_dict_file   # noqa: E402
         wf = _find_weight_file(ckpt)
         models = getattr(self, "models", [self.model])
@@ -421,6 +568,8 @@ class StudentEngine:
                         torch.cuda.synchronize(replica_device)
                     with torch.autocast(
                             device_type="cuda", dtype=torch.bfloat16, enabled=cuda_replica):
+                        if self.compile_mode is not None:
+                            torch.compiler.cudagraph_mark_step_begin()
                         output = model({"images": clips})
                     if cuda_replica:
                         torch.cuda.synchronize(replica_device)
@@ -569,6 +718,7 @@ class StudentEngine:
                 "hand_postprocess": "ukf_cam_rts" if hand_smoothed else "none",
                 "persistent_kv_cache": False,
                 "full_max_frames": self.full_max_frames,
+                **self.acceleration_metadata,
             }
             return res
 
@@ -690,6 +840,7 @@ class StudentEngine:
                 "window_overlap": overlap if (self.has_hand or self.has_hand_presence) else 0,
                 "hand_mode": hand_mode,
                 "hand_postprocess": "ukf_cam_rts" if hand_smoothed else "none",
+                **self.acceleration_metadata,
             }
             return res
 
@@ -715,7 +866,13 @@ class StudentEngine:
             1,
             self.parallel_device_count if window_batch_size is None else int(window_batch_size),
         )
-        effective_batch = requested_batch
+        effective_batch = self._effective_window_batch_size(requested_batch)
+        if effective_batch != requested_batch:
+            print(
+                f"[inference] torch.compile limits window batch from {requested_batch} "
+                f"to {effective_batch} so every GPU keeps local batch=1",
+                flush=True,
+            )
         forward_batches = 0
         with torch.inference_mode():
             wi = 0
@@ -736,7 +893,7 @@ class StudentEngine:
                     out, dt = self._forward_window_batch(
                         x,
                         batch_bounds,
-                        disable_persistent_kv_cache=(cam_mode == "max_chunked"),
+                        disable_persistent_kv_cache=True,
                     )
                 except torch.cuda.OutOfMemoryError:
                     if len(batch_bounds) <= 1:
@@ -861,6 +1018,7 @@ class StudentEngine:
             "preprocess_s": preprocess_s,
             "forward_s": t_fwd,
             "total_s": time.perf_counter() - predict_started,
+            "requested_window_batch_size": requested_batch,
             "window_batch_size": effective_batch,
             "forward_batches": forward_batches,
             "windows": nwin,
@@ -871,6 +1029,7 @@ class StudentEngine:
             "inference_mode": cam_mode,
             "window_size": W,
             "full_max_frames": self.full_max_frames,
+            **self.acceleration_metadata,
         }
         return res
 

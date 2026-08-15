@@ -37,6 +37,15 @@ conda activate mint-inference
 python -m mint doctor --profile inference --strict
 ```
 
+The environment script streams subprocess output directly. Conda runs in
+verbose mode, and pip download/install progress bars are forced on, so long
+CUDA wheel downloads no longer appear to hang silently.
+
+If a download is interrupted, run the same command again. The script reuses
+the existing environment and resumes package installation instead of requiring
+the partially created environment to be deleted. Only activate the environment
+and run `mint doctor` after the script prints that the environment is ready.
+
 The inference profile includes PyTorch, OpenCV, Flask, numerical dependencies,
 and FFmpeg. It excludes Ray, PyArrow, W&B, data conversion, model compilers,
 and upstream processing backends.
@@ -70,6 +79,14 @@ before it replaces the destination:
 ```bash
 bash scripts/download_assets.sh
 ```
+
+Downloads show a live progress bar and use `.part` files for safe resume. For
+Hugging Face assets, the helper first tries the official endpoint. If the
+connection does not start transferring at least 1 KiB/s within 30 seconds, it
+automatically continues the same partial file through `https://hf-mirror.com`.
+Run the same command again after any interruption; completed bytes are kept.
+Set `MINT_HF_MIRROR` to use a different mirror, or tune the timeout with
+`MINT_DOWNLOAD_SPEED_TIME`.
 
 ## MANO assets
 

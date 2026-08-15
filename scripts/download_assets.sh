@@ -10,6 +10,10 @@ ROBOT_URL="https://github.com/1847540790/wuji-ego-mint/releases/download/assets-
 STUDENT_HF_URL="https://huggingface.co/ZZJAsher/mint_v1/resolve/main/model.safetensors"
 STUDENT_MS_REPO="AsherZhu/mint_v1"
 STUDENT_MS_REVISION="master"
+HF_MIRROR_ENDPOINT="${MINT_HF_MIRROR:-${HF_ENDPOINT:-https://hf-mirror.com}}"
+DOWNLOAD_CONNECT_TIMEOUT="${MINT_DOWNLOAD_CONNECT_TIMEOUT:-15}"
+DOWNLOAD_SPEED_LIMIT="${MINT_DOWNLOAD_SPEED_LIMIT:-1024}"
+DOWNLOAD_SPEED_TIME="${MINT_DOWNLOAD_SPEED_TIME:-30}"
 BACKBONE_SHA256="ee665103348e07e6b826d529b8e61de8f413d5432a4f2e84970d6c8fd2e1cd72"
 ROBOT_SHA256="4594e07774211d21eda7d98ef3f7cf6f3a06f12bc750b505a8bf54765d357e69"
 STUDENT_SHA256="7b2f0aa5dfd00c271bb2f12c841ccfcc70e81e4052d413eacb5fb42a1bcc36c8"
@@ -20,6 +24,29 @@ verify() {
   local destination="$1"
   local sha256="$2"
   printf '%s  %s\n' "$sha256" "$destination" | sha256sum --check --status
+}
+
+download_once() {
+  local url="$1"
+  local partial="$2"
+  local retries="$3"
+  shift 3
+
+  curl \
+    --fail \
+    --location \
+    --retry "$retries" \
+    --retry-all-errors \
+    --retry-delay 2 \
+    --continue-at - \
+    --connect-timeout "$DOWNLOAD_CONNECT_TIMEOUT" \
+    --speed-limit "$DOWNLOAD_SPEED_LIMIT" \
+    --speed-time "$DOWNLOAD_SPEED_TIME" \
+    --progress-bar \
+    --show-error \
+    "$@" \
+    --output "$partial" \
+    "$url"
 }
 
 download_verified() {
@@ -35,11 +62,31 @@ download_verified() {
   fi
 
   echo "Downloading ${destination#"$PROJECT_DIR/"}"
-  if ! curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
-    "$@" --output "$partial" "$url"; then
-    rm -f "$partial"
+  if [[ -s "$partial" ]]; then
+    echo "Resuming partial download ($(stat -c '%s' "$partial") bytes already present)."
+  fi
+
+  if [[ "$url" == https://huggingface.co/* ]]; then
+    if ! download_once "$url" "$partial" 0 "$@"; then
+      local mirror_url="${HF_MIRROR_ENDPOINT%/}/${url#https://huggingface.co/}"
+      if [[ "$mirror_url" == "$url" ]]; then
+        echo "Hugging Face download failed; partial data remains at ${partial#"$PROJECT_DIR/"}." >&2
+        return 1
+      fi
+      echo "Official Hugging Face endpoint stalled or failed; switching to $HF_MIRROR_ENDPOINT"
+      # These release assets are public; do not forward private HF tokens to a mirror.
+      if ! download_once "$mirror_url" "$partial" 5; then
+        echo "Mirror download failed; partial data remains at ${partial#"$PROJECT_DIR/"}." >&2
+        echo "Run this script again to resume it." >&2
+        return 1
+      fi
+    fi
+  elif ! download_once "$url" "$partial" 5 "$@"; then
+    echo "Download failed; partial data remains at ${partial#"$PROJECT_DIR/"}." >&2
+    echo "Run this script again to resume it." >&2
     return 1
   fi
+
   if ! verify "$partial" "$sha256"; then
     echo "Checksum verification failed: ${partial#"$PROJECT_DIR/"}" >&2
     rm -f "$partial"
@@ -84,9 +131,12 @@ download_student() {
   mv -f "$staging/model.safetensors" "$destination"
 }
 
+echo "[1/3] LingBot-Map backbone"
 download_verified "$BACKBONE_URL" "$MODEL_DIR/lingbot-map.pt" "$BACKBONE_SHA256"
+echo "[2/3] Robot description"
 download_verified "$ROBOT_URL" \
   "$ROBOT_DIR/wuji-hand-description.tar.gz" "$ROBOT_SHA256"
+echo "[3/3] MINT student checkpoint"
 download_student
 
 tar -xzf "$ROBOT_DIR/wuji-hand-description.tar.gz" -C "$ROBOT_DIR"

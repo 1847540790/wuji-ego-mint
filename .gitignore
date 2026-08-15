@@ -7,6 +7,10 @@ __pycache__/
 .coverage
 htmlcov/
 tests/
+!tests/
+tests/*
+!tests/__init__.py
+!tests/test_inference_acceleration.py
 
 # Environments and editors
 .env

@@ -6,4 +6,5 @@ PyYAML==6.0.3
 safetensors==0.8.0
 scipy==1.15.3
 smplx==0.1.28
+torchao==0.13.0
 tqdm==4.68.3

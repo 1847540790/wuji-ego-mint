@@ -44,7 +44,12 @@ def run_checks(profile: str) -> list[Check]:
         _module("yaml"),
     ]
     if profile in {"inference", "full"}:
-        checks.extend([_module("flask"), _module("scipy"), _module("smplx")])
+        checks.extend([
+            _module("flask"),
+            _module("scipy"),
+            _module("smplx"),
+            _module("torchao"),
+        ])
         right = PROJECT_DIR / "assets" / "mano" / "mano_right" / "MANO_RIGHT.pkl"
         left = PROJECT_DIR / "assets" / "mano" / "mano_left" / "MANO_LEFT.pkl"
         hawor_data = PROJECT_DIR / "third_party" / "HaWoR" / "_DATA"

@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 from flask import Flask, abort, jsonify, request, send_file
 
+from mint.inference.acceleration import COMPILE_MODES, FP8_MODES
 from mint.inference.base import InferenceCancelled
 from mint.inference.engine import StudentEngine
 from mint.inference.video import read_video
@@ -82,6 +83,10 @@ class ViewerService:
         devices: str,
         max_frames: int,
         target_fps: float,
+        compile_mode: str = "auto",
+        fp8_mode: str = "auto",
+        window_batch_size: int | None = None,
+        warmup_passes: int = 2,
     ) -> None:
         self.samples_dir = samples_dir.resolve()
         self.artifacts_dir = artifacts_dir.resolve()
@@ -90,6 +95,10 @@ class ViewerService:
         self.devices = devices
         self.max_frames = max_frames
         self.target_fps = target_fps
+        self.compile_mode = compile_mode
+        self.fp8_mode = fp8_mode
+        self.window_batch_size = window_batch_size
+        self.warmup_passes = max(0, int(warmup_passes))
         self.samples = self._scan_samples()
         self.jobs: dict[str, Job] = {}
         self._jobs_lock = threading.Lock()
@@ -128,7 +137,23 @@ class ViewerService:
             if self._engine is None:
                 job.stage = "Loading checkpoint"
                 job.progress = 0.12
-                self._engine = StudentEngine(self.config, ckpt=self.checkpoint, devices=self.devices)
+                engine = StudentEngine(
+                    self.config,
+                    ckpt=self.checkpoint,
+                    devices=self.devices,
+                    compile_mode=self.compile_mode,
+                    fp8_mode=self.fp8_mode,
+                )
+                if engine.compile_mode is not None and self.warmup_passes:
+                    job.stage = "Optimizing model"
+                    job.progress = 0.15
+                    engine.warmup_acceleration(
+                        window_batch_size=(
+                            self.window_batch_size or engine.parallel_device_count
+                        ),
+                        passes=self.warmup_passes,
+                    )
+                self._engine = engine
             return self._engine
 
     def submit(self, sample_id: str) -> Job:
@@ -164,6 +189,7 @@ class ViewerService:
                 on_step=inference_progress,
                 cancel_check=job.cancel.is_set,
                 cam_mode="chunked",
+                window_batch_size=self.window_batch_size,
                 hand_mode="smooth",
             )
             arrays = {key: np.asarray(value) for key, value in prediction.items() if not key.startswith("_")}
@@ -191,6 +217,8 @@ class ViewerService:
                 "frames": job.frames,
                 "fps": job.fps,
                 "ground_truth_used": False,
+                "acceleration": engine.acceleration_metadata,
+                "timings": prediction.get("_timings"),
             }
             (target / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
             job.artifacts = {
@@ -250,6 +278,14 @@ def create_app(service: ViewerService) -> Flask:
                 "samples": len(service.samples),
                 "model_loaded": service._engine is not None,
                 "ground_truth": False,
+                "acceleration": (
+                    service._engine.acceleration_metadata
+                    if service._engine is not None
+                    else {
+                        "compile_mode_requested": service.compile_mode,
+                        "fp8_mode_requested": service.fp8_mode,
+                    }
+                ),
             }
         )
 
@@ -327,6 +363,22 @@ def viewer_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--checkpoint", required=True, help="MINT checkpoint file or directory")
     parser.add_argument("--config", default="configs/training/lingbotmap_base.yaml")
     parser.add_argument("--devices", default="auto")
+    parser.add_argument(
+        "--compile-mode", choices=("off", *COMPILE_MODES), default="auto",
+        help="Acceleration defaults to reduce-overhead on CUDA; use off to disable",
+    )
+    parser.add_argument(
+        "--fp8-mode", choices=("off", *FP8_MODES), default="auto",
+        help="Auto enables dynamic FP8 on CUDA capability >= 8.9",
+    )
+    parser.add_argument(
+        "--window-batch-size", type=int, default=None,
+        help="Defaults to one independent window per loaded GPU",
+    )
+    parser.add_argument(
+        "--warmup-passes", type=int, default=2,
+        help="Compile/CUDA Graph warmup passes when acceleration is enabled",
+    )
     parser.add_argument("--max-frames", type=int, default=160)
     parser.add_argument("--target-fps", type=float, default=15.0)
     parser.add_argument("--host", default="127.0.0.1")
@@ -342,6 +394,10 @@ def viewer_main(argv: list[str] | None = None) -> int:
         devices=args.devices,
         max_frames=args.max_frames,
         target_fps=args.target_fps,
+        compile_mode=args.compile_mode,
+        fp8_mode=args.fp8_mode,
+        window_batch_size=args.window_batch_size,
+        warmup_passes=args.warmup_passes,
     )
     app = create_app(service)
     url = f"http://127.0.0.1:{args.port}"

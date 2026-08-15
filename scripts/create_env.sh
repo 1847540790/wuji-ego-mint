@@ -48,32 +48,39 @@ print(os.path.join(info["envs_dirs"][0], sys.argv[1]))
 ' "$ENV_NAME")"
 
 if conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME" || [[ -e "$ENV_PREFIX" ]]; then
-  echo "Conda environment '$ENV_NAME' already exists." >&2
-  echo "Remove it explicitly before requesting a clean rebuild:" >&2
-  echo "  conda env remove --name $ENV_NAME" >&2
-  exit 1
+  if [[ "$PROFILE" == "inference" ]]; then
+    echo "[1/5] Reusing existing '$ENV_NAME' environment and resuming package installation"
+  else
+    echo "Conda environment '$ENV_NAME' already exists." >&2
+    echo "Remove it explicitly before requesting a clean rebuild:" >&2
+    echo "  conda env remove --name $ENV_NAME" >&2
+    exit 1
+  fi
+else
+  echo "[1/5] Creating '$ENV_NAME' from $ENV_FILE (Conda progress follows)"
+  conda env create --verbose --file "$ENV_FILE"
 fi
 
-echo "Creating '$ENV_NAME' from $ENV_FILE"
-conda env create --file "$ENV_FILE"
-
-echo "Installing the tested CUDA-enabled PyTorch build"
-conda run --name "$ENV_NAME" python -m pip install \
+echo "[2/5] Installing the tested CUDA-enabled PyTorch build (large CUDA wheels)"
+conda run --no-capture-output --name "$ENV_NAME" python -m pip install \
+  --progress-bar on \
   "${PIP_NETWORK_ARGS[@]}" "${PYPI_SOURCE_ARGS[@]}" "${TORCH_SOURCE_ARGS[@]}" \
   --requirement "$PROJECT_DIR/environments/requirements-torch.txt"
 
 for requirement in "${REQUIREMENTS[@]}"; do
-  echo "Installing $requirement"
-  conda run --name "$ENV_NAME" python -m pip install \
+  echo "[3/5] Installing $requirement"
+  conda run --no-capture-output --name "$ENV_NAME" python -m pip install \
+    --progress-bar on \
     "${PIP_NETWORK_ARGS[@]}" "${PYPI_SOURCE_ARGS[@]}" \
     --requirement "$PROJECT_DIR/environments/$requirement"
 done
 
-echo "Installing MINT in editable mode without dependency re-resolution"
-conda run --name "$ENV_NAME" python -m pip install --no-deps --editable "$PROJECT_DIR"
+echo "[4/5] Installing MINT in editable mode without dependency re-resolution"
+conda run --no-capture-output --name "$ENV_NAME" python -m pip install \
+  --progress-bar on --no-deps --editable "$PROJECT_DIR"
 
-echo "Running the environment smoke test"
-conda run --cwd "$PROJECT_DIR" --name "$ENV_NAME" \
+echo "[5/5] Running the environment smoke test"
+conda run --no-capture-output --cwd "$PROJECT_DIR" --name "$ENV_NAME" \
   python -m mint doctor --profile "$DOCTOR_PROFILE" --strict
 
 echo
