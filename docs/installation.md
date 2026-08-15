@@ -23,6 +23,12 @@ python -m mint doctor --profile full --strict
 This performs a clean solve from `environments/mint.yml`, then installs each
 pinned requirements layer. It never clones another local environment. If the
 environment already exists, the script exits rather than mutating it silently.
+The initial solve uses the channels already configured on the host. If that
+solve fails, the script automatically retries with an isolated temporary
+configuration: official conda-forge first, followed by the USTC conda-forge
+mirror. This fallback never edits `.condarc` or other global Conda settings.
+Set `MINT_CONDA_FALLBACK_CHANNELS` to a space-separated list of trusted channel
+URLs when another fallback order is required.
 For a network that cannot reach the official PyTorch wheel CDN, set
 `MINT_TORCH_INDEX_URL` for a compatible package index, or
 `MINT_TORCH_FIND_LINKS` for a trusted flat wheel mirror, before running the
