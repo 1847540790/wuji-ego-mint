@@ -48,28 +48,37 @@ info = json.load(sys.stdin)
 print(os.path.join(info["envs_dirs"][0], sys.argv[1]))
 ' "$ENV_NAME")"
 
-TEMP_CONDARC=""
+TEMP_CONDA_SPECS=""
 
-cleanup_temp_condarc() {
-  if [[ -n "$TEMP_CONDARC" && -f "$TEMP_CONDARC" ]]; then
-    find "$TEMP_CONDARC" -delete
+cleanup_temp_specs() {
+  if [[ -n "$TEMP_CONDA_SPECS" && -f "$TEMP_CONDA_SPECS" ]]; then
+    find "$TEMP_CONDA_SPECS" -delete
   fi
 }
 
-trap cleanup_temp_condarc EXIT
+trap cleanup_temp_specs EXIT
 
 create_environment() {
   local -a create_args=(--verbose --prefix "$ENV_PREFIX" --file "$ENV_FILE")
   local -a fallback_channels=()
   local channel
+  local system_channel_config
 
   if [[ -e "$ENV_PREFIX" ]]; then
     create_args=(--verbose --force --prefix "$ENV_PREFIX" --file "$ENV_FILE")
   fi
 
-  echo "[1/5] Creating '$ENV_NAME' with the system Conda channels (Conda progress follows)"
-  if conda env create "${create_args[@]}"; then
-    return 0
+  system_channel_config="$(
+    conda config --show channels channel_alias default_channels custom_channels 2>/dev/null || true
+  )"
+  if grep -Eiq 'tuna\.tsinghua\.edu\.cn|mirrors\.hit\.edu\.cn' \
+    <<< "$system_channel_config"; then
+    echo "[1/5] Skipping system Conda channels because a blocked TUNA or HIT source is configured"
+  else
+    echo "[1/5] Creating '$ENV_NAME' with the system Conda channels (Conda progress follows)"
+    if conda env create "${create_args[@]}"; then
+      return 0
+    fi
   fi
 
   read -r -a fallback_channels <<< "$CONDA_FALLBACK_CHANNELS"
@@ -79,20 +88,20 @@ create_environment() {
   fi
 
   echo >&2
-  echo "System Conda channels failed; trying isolated fallback channels." >&2
-  echo "The fallback does not modify the user's Conda configuration." >&2
-  TEMP_CONDARC="$(mktemp "${TMPDIR:-/tmp}/mint-condarc.XXXXXX")"
+  echo "Trying strictly isolated fallback Conda channels." >&2
+  echo "The fallback ignores configured channels and does not modify Conda settings." >&2
+  TEMP_CONDA_SPECS="$(mktemp "${TMPDIR:-/tmp}/mint-conda-specs.XXXXXX")"
+  sed -n 's/^  - //p' "$ENV_FILE" > "$TEMP_CONDA_SPECS"
+  if [[ ! -s "$TEMP_CONDA_SPECS" ]]; then
+    echo "No Conda package specifications were found in $ENV_FILE." >&2
+    return 1
+  fi
 
   for channel in "${fallback_channels[@]}"; do
-    truncate --size 0 "$TEMP_CONDARC"
-    conda config --file "$TEMP_CONDARC" --add channels "$channel"
-    conda config --file "$TEMP_CONDARC" --remove channels defaults 2>/dev/null || true
-    conda config --file "$TEMP_CONDARC" --set channel_priority strict
-    conda config --file "$TEMP_CONDARC" --set show_channel_urls true
-
     echo "Retrying Conda environment creation with: $channel" >&2
-    if CONDARC="$TEMP_CONDARC" conda env create \
-      --verbose --force --prefix "$ENV_PREFIX" --file "$ENV_FILE"; then
+    if conda create --yes --verbose --prefix "$ENV_PREFIX" \
+      --override-channels --channel "$channel" --strict-channel-priority \
+      --no-default-packages --show-channel-urls --file "$TEMP_CONDA_SPECS"; then
       return 0
     fi
   done

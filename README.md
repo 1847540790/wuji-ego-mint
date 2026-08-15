@@ -21,7 +21,7 @@ Viewer 不会读取或展示真值，也不能浏览配置样例目录之外的�
 ## 安装
 
 MINT 使用 Python 3.10、PyTorch 2.8 和 CUDA 12.8。两个环境均通过独立配置从零求解，不会克隆任何已有 Conda 环境。
-环境脚本首先使用系统现有的 Conda channels；若创建失败，会通过临时隔离配置依次尝试官方 conda-forge 和 USTC 镜像，不会修改用户的全局 Conda 配置。
+环境脚本首先使用系统现有的 Conda channels；若系统配置包含已知不可用的清华或 HIT 源，则直接跳过。创建失败后，脚本会通过 `--override-channels` 严格隔离系统源，并依次尝试官方 conda-forge 和 USTC 镜像。回退阶段不会混入任何已配置源，也不会修改用户的全局 Conda 配置。
 
 ### 完整训练与数据环境
 

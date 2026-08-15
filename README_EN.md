@@ -29,9 +29,12 @@ sample directory. This is a deliberate privacy and security boundary.
 
 MINT uses Python 3.10 and PyTorch 2.8 with CUDA 12.8. Both environments are
 resolved from clean specifications; no existing Conda environment is cloned.
-The environment script tries the system Conda channels first. If creation
-fails, an isolated temporary configuration retries the official conda-forge
-channel and the USTC mirror without changing the user's global Conda settings.
+The environment script tries the system Conda channels first, unless their
+resolved configuration contains a known-blocked TUNA or HIT endpoint. If the
+system solve is skipped or fails, `--override-channels` strictly isolates the
+retry, then tries the official conda-forge channel and the USTC mirror. No
+configured channel can leak into the fallback, and global settings are never
+changed.
 
 ### Full environment
 
