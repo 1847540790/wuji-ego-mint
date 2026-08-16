@@ -37,8 +37,7 @@ Quick Start 使用的模型与资产请按下表放置。`scripts/download_asset
 | 模型或资产 | 下载来源 | 仓库内放置路径 | 说明 |
 | --- | --- | --- | --- |
 | MINT checkpoint | [ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) 或 [Hugging Face](https://huggingface.co/ZZJAsher/mint_v1) | `checkpoints/model.safetensors` | 下载脚本会自动放置并校验；手动下载时也应使用该路径。 |
-| MANO 右手模型 | [MANO 官网](https://mano.is.tue.mpg.de/) | `assets/mano/mano_right/MANO_RIGHT.pkl` | 需要注册并接受 MANO License。 |
-| MANO 左手模型 | [MANO 官网](https://mano.is.tue.mpg.de/) | `assets/mano/mano_left/MANO_LEFT.pkl` | 需要注册并接受 MANO License。 |
+| MANO 左右手模型 | [MANO 官网](https://mano.is.tue.mpg.de/) | `assets/mano/mano_right/MANO_RIGHT.pkl`<br>`assets/mano/mano_left/MANO_LEFT.pkl` | 需要注册并接受 MANO License。 |
 | LingBot-Map 预训练骨干 | [LingBot-Map](https://github.com/robbyant/lingbot-map) | `assets/models/lingbot-map.pt` | 可选资产，仅在对应配置需要时下载。 |
 | Wuji Hand URDF、MJCF 和 STL | 已包含在本仓库 | `eval/simulate/wuji-retargeting/wuji_retargeting/wuji-description/hand/body/` | 无需额外下载。 |
 
