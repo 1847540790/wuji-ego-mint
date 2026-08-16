@@ -40,43 +40,13 @@ Viewer 启动后会自动在默认浏览器打开 `http://127.0.0.1:8011`，然�
 | 模型训练 | `python -m mint train` | 使用 Accelerate/DDP 训练相机与手部 MINT 模型。 |
 | 推理与可视化 | `python -m mint viewer` | 使用原版 model_effect Web 界面查看 LeRobot GT、模型预测、2D/3D 轨迹与逐帧指标。 |
 | 模型评测 | `python eval/model_effect/benchmark/run.py` | 运行开源 benchmark CLI；数据集和运行环境由使用者配置。 |
-| 无界面推理 | `python -m mint infer` | 面向脚本和批处理，对单个视频导出渲染视频和数值结果。 |
 | 环境检查 | `python -m mint doctor` | 检查依赖、可选后端、模型资产和运行环境。 |
 
-Viewer 默认直接进入 `data/samples/lerobot_v3/`，并保留原版目录浏览和 LeRobot GT 对照能力。顶栏的 Benchmark 按钮可直接启动本地 GPU 或 Aliyun 评测，同一套评测也可通过独立 CLI 使用。
+Viewer 启动后会自动打开浏览器。模型与 checkpoint 选择、样本和 LeRobot episode 浏览、模型加载、推理、GT/Pred 对比、2D/3D 可视化、逐帧数值与 loss、结果导出以及 Benchmark 均可直接在 Viewer 面板中完成，无需额外的命令行可视化步骤。
 
 ## 安装配置与 Viewer 选项
 
-MINT 使用 Python 3.10、PyTorch 2.8 和 CUDA 12.8。两个环境均通过独立配置从零求解，不会克隆任何已有 Conda 环境。
-环境脚本首先使用系统现有的 Conda channels；若系统配置包含已知不可用的清华或 HIT 源，则直接跳过。创建失败后，脚本会通过 `--override-channels` 严格隔离系统源，并仅使用官方 conda-forge 重试。回退阶段不会混入任何已配置源，也不会修改用户的全局 Conda 配置。`full` 与 `inference` 共用完全相同的推理依赖层：NumPy、PyTorch 和普通 Python 包默认使用 USTC PyPI；Linux x86_64 上的 PyTorch 2.8.0 包会安装其锁定的 CUDA 12.8 运行时依赖。完整环境随后才追加训练、数据与开发依赖。
-
-Viewer 默认读取以下项目路径：
-
-- 样例：`data/samples/lerobot_v3/`
-- 模型：`output/model_train/` 中可发现的训练 checkpoint，或命令行 `--ckpt`
-- 配置：`configs/training/mint_step2.yaml`
-- 缓存：系统临时目录下的 `wuji-viewer-cache/`，或命令行 `--cache-dir`
-
-浏览器打开 `http://127.0.0.1:8011`。Viewer 会展示 LeRobot 的 GT，并在显式点击“加载模型”和“开始推理”后生成 GT/Pred 2D overlay、固定世界/当前相机 3D、逐帧数值和 loss。服务默认监听 `0.0.0.0`；远程使用时建议通过 SSH 转发或带认证的反向代理访问。
-
-默认模型不存在时，先运行 `bash scripts/download_assets.sh`；使用其他兼容模型时才需要覆盖路径：
-
-```bash
-python -m mint viewer --ckpt /path/to/model.safetensors
-```
-
-最小环境不安装 Ray、数据转换组件、训练日志组件和数据管线研究后端。网格渲染还需要按许可证单独放置 MANO 文件；CUDA、MANO 和离线安装说明见 [安装指南](docs/installation.md)。
-
-### 可选：无界面推理
-
-`mint infer` 是单视频的无界面推理入口，不是 Viewer 的前置步骤。自动化任务或只需要导出文件时可直接运行：
-
-```bash
-python -m mint infer \
-  --input /path/to/video.mp4 \
-  --checkpoint checkpoints/model.safetensors \
-  --output artifacts/example
-```
+所有可视化操作均可在 Viewer 面板中完成；安装、CUDA、MANO 与离线部署细节见 [安装指南](docs/installation.md)。
 
 ## 模型训练与可选管线复现
 
@@ -88,7 +58,7 @@ conda activate mint
 python -m mint doctor --profile full
 ```
 
-公开版本推荐直接使用 Viewer 或 `mint infer` 进行 MINT 模型推理并导出结果。本仓库不提供从任意原始视频到生产版 LeRobot 训练数据的开箱即用流程。
+公开版本以 Viewer 作为 MINT 模型推理、可视化和结果导出的统一入口。本项目仅提供第三方许可证允许公开发布的代码；受许可证限制的第三方适配与内部集成不包含在本仓库中，因此本仓库不包含完整的生产数据流程。
 
 GeoCalib、MoGe 和 Mega-SAM 的源码快照位于 `third_party/`，但生产管线使用的部分第三方适配代码受上游许可证限制，无法公开。其中，当前机器上修改过的 HaWoR 源码因 CC BY-NC-ND 禁止分发修改版而保持 Git 忽略。所有权重、MANO 文件和其他需单独授权的资产也不随仓库发布。
 
@@ -108,7 +78,7 @@ python -m mint train --config configs/training/mint_step2.yaml
 
 Stage 2 配置中的 `train.init_from` 已指向 Stage 1 的 `step_00019000/model.safetensors`。`--inspect` 不读取数据集，仅构建模型并输出结构，建议将它作为训练配置的第一项检查。
 
-`mint train` 消费由使用者单独准备的兼容 LeRobot 数据集并产出训练 checkpoint；它同样不需要 Viewer。训练完成后，如需交互检查新模型，再使用 `python -m mint viewer --ckpt /path/to/checkpoint`。
+`mint train` 消费由使用者单独准备的兼容 LeRobot 数据集并产出训练 checkpoint。训练完成后，可直接在 Viewer 面板中选择并检查新的 checkpoint。
 
 ## LeRobot 样例与隐私
 
@@ -172,7 +142,7 @@ mint/
 
 ## 致谢
 
-MINT 的实现离不开以下研究项目、模型与数据集。前三项按照它们对本仓库的主要技术贡献排序。
+MINT 的实现离不开以下研究项目、模型与数据集。
 
 - **VITRA** — MINT 的数据处理架构、第一视角重建流程、世界坐标系相机/手部标注以及 LeRobot 转换规范均由 VITRA 与 VITRA-1M 数据引擎演进而来。
 - **[LingBot-Map](https://github.com/robbyant/lingbot-map)** — 提供 MINT 相机与手部训练、推理所使用的核心模型架构和上游适配源码。

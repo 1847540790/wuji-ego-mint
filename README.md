@@ -53,65 +53,19 @@ The Viewer automatically opens `http://127.0.0.1:8011` in the default browser. T
 | Train | `python -m mint train` | Train the camera-and-hand MINT model with Accelerate/DDP. |
 | Infer and view | `python -m mint viewer` | Use the original model_effect web UI for LeRobot GT, predictions, 2D/3D trajectories, and frame metrics. |
 | Benchmark | `python eval/model_effect/benchmark/run.py` | Run the open benchmark CLI with user-provided data and environment. |
-| Headless infer | `python -m mint infer` | Export overlays and numeric results for scripts and batch jobs. |
 | Audit | `python -m mint doctor` | Verify the environment, optional backends, assets, and GPU runtime. |
 
-The viewer starts directly in `data/samples/lerobot_v3/` and retains the
-original directory browser and LeRobot ground-truth comparison workflow. Its
-Benchmark button can launch local-GPU or Aliyun evaluation, and the same
-benchmark remains available through the independent CLI.
+The Viewer opens automatically after startup. Model and checkpoint selection,
+sample and LeRobot episode browsing, model loading, inference, GT/prediction
+comparison, 2D/3D visualization, frame values and losses, exports, and
+Benchmark operations are all available directly in the Viewer panel. No
+additional command-line visualization step is required.
 
 ## Installation Profiles and Viewer Options
 
-MINT uses Python 3.10 and PyTorch 2.8 with CUDA 12.8. Both environments are
-resolved from clean specifications; no existing Conda environment is cloned.
-The environment script tries the system Conda channels first, unless their
-resolved configuration contains a known-blocked TUNA or HIT endpoint. If the
-system solve is skipped or fails, `--override-channels` strictly isolates the
-retry and uses only the official conda-forge channel. No configured channel can
-leak into the fallback, and global settings are never changed. The `full` and
-`inference` profiles install the exact same inference foundation. NumPy,
-PyTorch, and general Python packages use the USTC PyPI mirror by default; on
-Linux x86_64, the pinned PyTorch 2.8.0 package installs its CUDA 12.8 runtime
-dependencies. The full profile adds training, data, and development
-dependencies only after that shared layer is fixed.
-
-The viewer uses these project paths by default:
-
-- sample: `data/samples/lerobot_v3/`;
-- model: a training checkpoint discovered under `output/model_train/`, or `--ckpt`;
-- configuration: `configs/training/mint_step2.yaml`;
-- cache: `wuji-viewer-cache/` under the system temporary directory, or `--cache-dir`.
-
-Open `http://127.0.0.1:8011`. The viewer displays LeRobot GT and, after the
-explicit Load Model and Start Inference actions, renders GT/prediction overlays,
-fixed-world and camera-frame 3D, numeric values, and frame losses. The server
-binds to `0.0.0.0` by default; use SSH forwarding or an authenticated reverse
-proxy for remote access.
-
-Run `bash scripts/download_assets.sh` if the default model is absent. Override
-the checkpoint only when using another compatible model:
-
-```bash
-python -m mint viewer --ckpt /path/to/model.safetensors
-```
-
-The inference profile omits Ray, dataset conversion, training loggers, and
-data-pipeline research backends. Mesh rendering also requires separately
-licensed MANO files. See [Installation](docs/installation.md) for CUDA, MANO,
-and offline installation details.
-
-### Optional headless inference
-
-`mint infer` is a command-line alternative to the viewer, not a prerequisite.
-Use it for automation or direct artifact export:
-
-```bash
-python -m mint infer \
-  --input /path/to/video.mp4 \
-  --checkpoint checkpoints/model.safetensors \
-  --output artifacts/example
-```
+All visualization operations are available in the Viewer panel. See
+[Installation](docs/installation.md) for installation, CUDA, MANO, and offline
+deployment details.
 
 ## Training and optional pipeline reconstruction
 
@@ -123,9 +77,11 @@ conda activate mint
 python -m mint doctor --profile full
 ```
 
-The recommended public workflow is to use the Viewer or `mint infer` directly
-for MINT inference and artifact export. The repository does not provide a
-turnkey path from arbitrary raw videos to the production LeRobot training data.
+The public release uses the Viewer as the unified entry point for MINT
+inference, visualization, and artifact export. This project publishes only code
+that third-party licenses permit us to distribute; license-restricted
+adaptations and internal integrations are excluded, so this repository does not
+contain the complete production data pipeline.
 
 GeoCalib, MoGe, and Mega-SAM source snapshots are distributed under
 `third_party/`, but some production adaptations cannot be published under their
@@ -160,9 +116,8 @@ The Stage 2 `train.init_from` points to the Stage 1
 loading a dataset and is the recommended first configuration check.
 
 `mint train` consumes a compatible, separately prepared LeRobot dataset and
-writes training checkpoints; it does not require the viewer. To inspect a
-trained model interactively, launch the viewer afterward with
-`--ckpt /path/to/checkpoint`.
+writes training checkpoints. After training, select the new checkpoint directly
+in the Viewer panel for interactive inspection.
 
 ## LeRobot sample
 
@@ -245,8 +200,6 @@ complete the local integration described in [Data pipeline](docs/data-pipeline.m
 ## Acknowledgements
 
 MINT is made possible by the following research projects, models, and datasets.
-The first three acknowledgements reflect the primary
-technical foundations of this repository.
 
 - **VITRA** — MINT's data-processing architecture, egocentric reconstruction workflow, world-space camera/hand annotations, and LeRobot conversion conventions evolved from the VITRA and VITRA-1M data engine.
 - **[LingBot-Map](https://github.com/robbyant/lingbot-map)** — provides the core model architecture and the upstream source adapted for MINT camera-and-hand training and inference.
