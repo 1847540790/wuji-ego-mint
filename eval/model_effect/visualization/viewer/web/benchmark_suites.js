@@ -88,8 +88,8 @@ const ICRA_HOT3D_CAMERA_ROWS = [
   {method: 'InfiniteVGGT', values: ['27/27', 124.8, 100.0, 13.52, 9.67, 1.492, 0.392, 0.556, 0.80]},
   {method: 'LingBot-Map', values: ['27/27', 85.5, 51.0, 7.56, 6.18, 0.684, 0.253, 0.712, 0.55]},
   {method: 'MegaSaM†', values: ['24/27', 94.4, 65.3, 3.18, 2.13, 0.082, 0.063, 0.716, 0.69]},
-  {method: 'MINT (step 4500)', values: ['27/27', 181.7, 155.5, 4.69, 4.78, 0.284, 0.259, 1.094, 1.15]},
-  {method: 'MINT (step 19000)', values: ['27/27', 291.6, 284.0, 4.78, 4.79, 0.324, 0.301, 1.045, 1.89]},
+  {method: 'MINT（相机轨迹二阶段微调）', values: ['27/27', 181.7, 155.5, 4.69, 4.78, 0.284, 0.259, 1.094, 1.15]},
+  {method: 'MINT（未微调相机轨迹）', values: ['27/27', 291.6, 284.0, 4.78, 4.79, 0.324, 0.301, 1.045, 1.89]},
 ];
 
 const ICRA_ARCTIC_CAMERA_ROWS = [
@@ -98,103 +98,9 @@ const ICRA_ARCTIC_CAMERA_ROWS = [
   {method: 'InfiniteVGGT', values: ['34/34', 79.0, 69.1, 16.21, 12.63, 1.265, 0.655, 0.284, 3.23]},
   {method: 'LingBot-Map', values: ['34/34', 59.6, 62.0, 9.17, 8.47, 0.980, 0.717, 0.591, 2.46]},
   {method: 'MegaSaM†', values: ['34/34', 51.4, 50.4, 8.73, 5.58, 0.779, 0.725, 1.956, 2.15]},
-  {method: 'MINT (step 4500)', values: ['34/34', 81.9, 83.2, 3.39, 3.37, 0.256, 0.251, 1.412, 3.40]},
-  {method: 'MINT (step 19000)', values: ['34/34', 728.6, 506.1, 71.01, 58.60, 6.039, 4.976, 0.690, 28.94]},
+  {method: 'MINT（相机轨迹二阶段微调）', values: ['34/34', 81.9, 83.2, 3.39, 3.37, 0.256, 0.251, 1.412, 3.40]},
+  {method: 'MINT（未微调相机轨迹）', values: ['34/34', 728.6, 506.1, 71.01, 58.60, 6.039, 4.976, 0.690, 28.94]},
 ];
-
-function _cameraCoverageFraction(value) {
-  const match = String(value || '').match(/^(\d+)\/(\d+)$/);
-  return match && Number(match[2]) > 0 ? Number(match[1]) / Number(match[2]) : 0;
-}
-
-function _buildBalancedCameraRows() {
-  const arcticByMethod = new Map(ICRA_ARCTIC_CAMERA_ROWS.map(row => [row.method, row]));
-  const datasetBases = [ICRA_HOT3D_CAMERA_ROWS, ICRA_ARCTIC_CAMERA_ROWS].map(datasetRows => [
-    ...Array.from({length: 6}, (_, offset) => Math.min(...datasetRows.map(row => row.values[offset + 1]))),
-    Math.min(...datasetRows.map(row => Math.abs(row.values[7] - 1))),
-    Math.min(...datasetRows.map(row => row.values[8])),
-  ]);
-  const rows = ICRA_HOT3D_CAMERA_ROWS.map(hot3d => {
-    const arctic = arcticByMethod.get(hot3d.method);
-    const values = [];
-    for (let index = 1; index <= 6; index += 1) {
-      values.push(0.5 * (hot3d.values[index] + arctic.values[index]));
-    }
-    // Opposite scale biases must not cancel, so aggregate distance from the target 1.
-    values.push(50 * (Math.abs(hot3d.values[7] - 1) + Math.abs(arctic.values[7] - 1)));
-    values.push(0.5 * (hot3d.values[8] + arctic.values[8]));
-    const datasets = [hot3d, arctic];
-    const datasetScores = datasets.map((dataset, datasetIndex) => {
-      const costs = [
-        ...dataset.values.slice(1, 7),
-        Math.abs(dataset.values[7] - 1),
-        dataset.values[8],
-      ];
-      const normalized = costs.map((value, index) => value / datasetBases[datasetIndex][index]);
-      return 100 * normalized.reduce((sum, value) => sum + value, 0) / normalized.length
-        / Math.max(_cameraCoverageFraction(dataset.values[0]), 1e-12);
-    });
-    values.push(0.5 * (datasetScores[0] + datasetScores[1]));
-    return {method: hot3d.method, values};
-  });
-  return {rows, datasetBases};
-}
-
-const ICRA_BALANCED_CAMERA = _buildBalancedCameraRows();
-const ICRA_BALANCED_CAMERA_COLUMNS = [
-  {key: 'ateMean', label: 'ATE均 · 50/50', metric: 'ATE-S mean', direction: 'min', unit: 'mm', digits: 1},
-  {key: 'ateMedian', label: 'ATE中 · 50/50', metric: 'ATE-S median', direction: 'min', unit: 'mm', digits: 1},
-  {key: 'rpeTMean', label: 'RPE-T均 · 50/50', metric: 'RPE-T-S mean', direction: 'min', unit: 'mm', digits: 2},
-  {key: 'rpeTMedian', label: 'RPE-T中 · 50/50', metric: 'RPE-T-S median', direction: 'min', unit: 'mm', digits: 2},
-  {key: 'rpeRMean', label: 'RPE-R均 · 50/50', metric: 'RPE-R mean', direction: 'min', unit: 'deg', digits: 3},
-  {key: 'rpeRMedian', label: 'RPE-R中 · 50/50', metric: 'RPE-R median', direction: 'min', unit: 'deg', digits: 3},
-  {key: 'pathScaleError', label: '弧长比误差 · 50/50', metric: 'Path scale', direction: 'min', unit: '%', digits: 2},
-  {key: 'atePct', label: 'ATE% · 50/50', metric: 'ATE-S pct', direction: 'min', unit: '%', digits: 2},
-  {key: 'balancedScore', label: '综合指数', metric: 'Balanced score', direction: 'min', unit: '', digits: 1},
-];
-
-const ICRA_BALANCED_CAMERA_LIVE_VALUES = {
-  ateMean: {average: [
-    {dataset: 'camera_hot3d', metric: 'ATE_S_mm'},
-    {dataset: 'camera_arctic', metric: 'ATE_S_mm'},
-  ]},
-  ateMedian: {average: [
-    {dataset: 'camera_hot3d', metric: 'ATE_S_median_mm'},
-    {dataset: 'camera_arctic', metric: 'ATE_S_median_mm'},
-  ]},
-  rpeTMean: {average: [
-    {dataset: 'camera_hot3d', metric: 'RPE_T_S_mm'},
-    {dataset: 'camera_arctic', metric: 'RPE_T_S_mm'},
-  ]},
-  rpeTMedian: {average: [
-    {dataset: 'camera_hot3d', metric: 'RPE_T_S_median_mm'},
-    {dataset: 'camera_arctic', metric: 'RPE_T_S_median_mm'},
-  ]},
-  rpeRMean: {average: [
-    {dataset: 'camera_hot3d', metric: 'RPE_R_deg'},
-    {dataset: 'camera_arctic', metric: 'RPE_R_deg'},
-  ]},
-  rpeRMedian: {average: [
-    {dataset: 'camera_hot3d', metric: 'RPE_R_median_deg'},
-    {dataset: 'camera_arctic', metric: 'RPE_R_median_deg'},
-  ]},
-  pathScaleError: {average: [
-    {dataset: 'camera_hot3d', metric: 'path_scale', transform: 'target-error-pct'},
-    {dataset: 'camera_arctic', metric: 'path_scale', transform: 'target-error-pct'},
-  ]},
-  atePct: {average: [
-    {dataset: 'camera_hot3d', metric: 'ATE_S_pct'},
-    {dataset: 'camera_arctic', metric: 'ATE_S_pct'},
-  ]},
-  balancedScore: {balancedCameraScore: {
-    datasets: [
-      {dataset: 'camera_hot3d', expectedSequences: 27, bases: ICRA_BALANCED_CAMERA.datasetBases[0]},
-      {dataset: 'camera_arctic', expectedSequences: 34, bases: ICRA_BALANCED_CAMERA.datasetBases[1]},
-    ],
-    metrics: ['ATE_S_mm', 'ATE_S_median_mm', 'RPE_T_S_mm', 'RPE_T_S_median_mm',
-      'RPE_R_deg', 'RPE_R_median_deg', {metric: 'path_scale', transform: 'target-error'}, 'ATE_S_pct'],
-  }},
-};
 
 const VIDIHAND_COLUMNS = [
   {key: 'facc', label: 'FAcc', metric: 'FAcc', direction: 'max'},
@@ -202,89 +108,39 @@ const VIDIHAND_COLUMNS = [
   {key: 'f1', label: 'F1', metric: 'F1', direction: 'max'},
   {key: 'mpjpe', label: 'MPJPE-p', metric: 'MPJPE-p', direction: 'min'},
   {key: 'pa', label: 'PA-MPJPE-p', metric: 'PA-MPJPE-p', direction: 'min'},
-  {key: 'epe', label: 'EPE-p', metric: 'EPE-p', direction: 'min'},
   {key: 'go', label: 'GO-p', metric: 'GO-p', direction: 'min'},
   {key: 'ct', label: 'CT-p', metric: 'CT-p', direction: 'min'},
   {key: 'jitter', label: 'Jitter', metric: 'Jitter', direction: 'min'},
 ];
 
-const VIDIHAND_LOCAL_SECTION = '本地固定记录 · sota-fixed-v1 50%（非论文同 split）';
 const VIDIHAND_ARCTIC_ROWS = [
-  {method: 'InterWild [16]', values: [0.878, 0.943, 0.959, 30.817, 15.952, 53.888, 25.386, 0.097, 46.577]},
-  {method: 'HaMeR [18]', values: [0.875, 0.943, 0.957, 29.197, 14.596, 65.289, 24.907, 0.095, 18.279]},
-  {method: 'Hamba [3]', values: [0.833, 0.912, 0.941, 31.233, 17.168, 87.047, 27.822, 0.110, 15.357]},
-  {method: 'WildHands [20]', values: [0.879, 0.946, 0.960, 25.704, 13.941, 50.517, 22.320, 0.058, 12.972]},
-  {method: 'OmniHands [14]', values: [0.866, 0.949, 0.954, 29.674, 14.203, 51.505, 24.580, 0.087, 45.312]},
-  {method: 'WiLoR [19]', values: [0.919, 0.951, 0.974, 22.012, 11.873, 71.527, 17.358, 0.075, 24.091]},
-  {method: 'Dyn-HaMR [32]', values: [0.842, 0.918, 0.951, 27.904, 17.017, 85.723, 25.951, 0.121, 12.840]},
-  {method: 'HaWoR [34]', values: [0.700, 0.817, 0.895, 45.357, 26.375, 158.062, 43.325, 0.149, 19.789]},
-  {method: 'ViDiHand（论文方法）', values: [0.997, 0.999, 0.999, 21.668, 9.821, 12.407, 14.642, 0.047, 3.183]},
-  {method: 'MINT step 4500 · UKF†', section: VIDIHAND_LOCAL_SECTION, comparable: false,
-   values: [0.9164294955, 0.9570862676, 0.9780726414, 51.0883026935, 27.7045266313, 66.1602098337, 24.2211365201, 0.1404341081, 2.5410249194]},
-  {method: 'MINT step 19000 · raw†', comparable: false,
-   values: [0.9164294955, 0.9570862676, 0.9780726414, 51.0271327109, 27.7103258962, 66.0139691522, 24.1859696172, 0.1403879853, 12.2614455342]},
+  {method: 'InterWild [16]', values: [0.878, 0.943, 0.959, 30.817, 15.952, 25.386, 0.097, 46.577]},
+  {method: 'HaMeR [18]', values: [0.875, 0.943, 0.957, 29.197, 14.596, 24.907, 0.095, 18.279]},
+  {method: 'Hamba [3]', values: [0.833, 0.912, 0.941, 31.233, 17.168, 27.822, 0.110, 15.357]},
+  {method: 'WildHands [20]', values: [0.879, 0.946, 0.960, 25.704, 13.941, 22.320, 0.058, 12.972]},
+  {method: 'OmniHands [14]', values: [0.866, 0.949, 0.954, 29.674, 14.203, 24.580, 0.087, 45.312]},
+  {method: 'WiLoR [19]', values: [0.919, 0.951, 0.974, 22.012, 11.873, 17.358, 0.075, 24.091]},
+  {method: 'Dyn-HaMR [32]', values: [0.842, 0.918, 0.951, 27.904, 17.017, 25.951, 0.121, 12.840]},
+  {method: 'HaWoR [34]', values: [0.700, 0.817, 0.895, 45.357, 26.375, 43.325, 0.149, 19.789]},
+  {method: 'ViDiHand（论文方法）', values: [0.997, 0.999, 0.999, 21.668, 9.821, 14.642, 0.047, 3.183]},
 ];
 
 const VIDIHAND_HOT3D_ROWS = [
-  {method: 'InterWild [16]', values: [0.669, 0.881, 0.868, 77.168, 24.811, 71.482, 58.501, 0.213, 101.164]},
-  {method: 'HaMeR [18]', values: [0.692, 0.904, 0.883, 68.314, 21.455, 59.077, 49.636, 0.102, 23.632]},
-  {method: 'Hamba [3]', values: [0.632, 0.828, 0.853, 71.732, 29.620, 107.625, 56.525, 0.128, 18.507]},
-  {method: 'WildHands [20]', values: [0.655, 0.863, 0.844, 52.791, 28.946, 111.438, 53.933, 0.157, 22.885]},
-  {method: 'OmniHands [14]', values: [0.649, 0.895, 0.868, 63.281, 22.682, 68.437, 49.120, 0.133, 69.510]},
-  {method: 'WiLoR [19]', values: [0.827, 0.897, 0.937, 30.966, 19.980, 72.978, 25.746, 0.098, 17.976]},
-  {method: 'Dyn-HaMR [32]', values: [0.614, 0.811, 0.802, 74.214, 38.201, 171.617, 43.851, 0.571, 44.942]},
-  {method: 'HaWoR [34]', values: [0.348, 0.499, 0.654, 71.396, 66.031, 327.294, 79.350, 0.262, 23.872]},
-  {method: 'ViDiHand（论文方法）', values: [0.948, 0.974, 0.983, 21.514, 11.383, 14.953, 15.829, 0.040, 3.741]},
-  {method: 'MINT step 4500 · UKF†', section: VIDIHAND_LOCAL_SECTION, comparable: false,
-   values: [0.9403725947, 0.9766806275, 0.9500742326, 23.6181765372, 10.6856908610, 28.3260602733, 16.7674587882, 0.0730599312, 2.3874989067]},
-  {method: 'MINT step 19000 · raw†', comparable: false,
-   values: [0.9403725947, 0.9766806275, 0.9500742326, 23.6133167320, 10.7007612002, 28.3793745886, 16.7749673436, 0.0732553354, 11.5161590612]},
+  {method: 'InterWild [16]', values: [0.669, 0.881, 0.868, 77.168, 24.811, 58.501, 0.213, 101.164]},
+  {method: 'HaMeR [18]', values: [0.692, 0.904, 0.883, 68.314, 21.455, 49.636, 0.102, 23.632]},
+  {method: 'Hamba [3]', values: [0.632, 0.828, 0.853, 71.732, 29.620, 56.525, 0.128, 18.507]},
+  {method: 'WildHands [20]', values: [0.655, 0.863, 0.844, 52.791, 28.946, 53.933, 0.157, 22.885]},
+  {method: 'OmniHands [14]', values: [0.649, 0.895, 0.868, 63.281, 22.682, 49.120, 0.133, 69.510]},
+  {method: 'WiLoR [19]', values: [0.827, 0.897, 0.937, 30.966, 19.980, 25.746, 0.098, 17.976]},
+  {method: 'Dyn-HaMR [32]', values: [0.614, 0.811, 0.802, 74.214, 38.201, 43.851, 0.571, 44.942]},
+  {method: 'HaWoR [34]', values: [0.348, 0.499, 0.654, 71.396, 66.031, 79.350, 0.262, 23.872]},
+  {method: 'ViDiHand（论文方法）', values: [0.948, 0.974, 0.983, 21.514, 11.383, 15.829, 0.040, 3.741]},
 ];
 
-function _buildBalancedViDiHandRows() {
-  const datasets = [VIDIHAND_ARCTIC_ROWS, VIDIHAND_HOT3D_ROWS];
-  const publicRows = datasets.map(rows => rows.filter(row => row.comparable !== false));
-  const bases = publicRows.map(rows => VIDIHAND_COLUMNS.map((column, index) => {
-    const values = rows.map(row => row.values[index]);
-    return column.direction === 'max' ? Math.max(...values) : Math.min(...values);
-  }));
-  const hot3dByMethod = new Map(VIDIHAND_HOT3D_ROWS.map(row => [row.method, row]));
-  const rows = VIDIHAND_ARCTIC_ROWS.map(arctic => {
-    const hot3d = hot3dByMethod.get(arctic.method);
-    const values = VIDIHAND_COLUMNS.map((_column, index) => 0.5 * (arctic.values[index] + hot3d.values[index]));
-    const datasetScores = [arctic, hot3d].map((row, datasetIndex) => {
-      const costs = row.values.map((value, index) => VIDIHAND_COLUMNS[index].direction === 'max'
-        ? bases[datasetIndex][index] / value : value / bases[datasetIndex][index]);
-      return 100 * costs.reduce((sum, value) => sum + value, 0) / costs.length;
-    });
-    values.push(0.5 * (datasetScores[0] + datasetScores[1]));
-    return {method: arctic.method, section: arctic.section, comparable: arctic.comparable, values};
-  });
-  return {rows, bases};
-}
-
-const VIDIHAND_BALANCED = _buildBalancedViDiHandRows();
-const VIDIHAND_BALANCED_COLUMNS = [
-  ...VIDIHAND_COLUMNS.map(column => ({...column, label: `${column.label} · 50/50`})),
-  {key: 'balancedScore', label: '综合指数', metric: 'ViDiHand balanced score', direction: 'min', digits: 1},
-];
 const VIDIHAND_LIVE_VALUES = {
   facc: 'FAcc', recall: 'Recall', f1: 'F1', mpjpe: 'MPJPE-p', pa: 'PA-MPJPE-p',
-  epe: 'EPE-p', go: 'GO-p', ct: 'CT-p', jitter: 'Jitter',
+  go: 'GO-p', ct: 'CT-p', jitter: 'Jitter',
 };
-const VIDIHAND_BALANCED_LIVE_VALUES = {
-  ...Object.fromEntries(Object.entries(VIDIHAND_LIVE_VALUES).map(([key, metric]) => [key, {average: [
-    {dataset: 'arctic_hand_coverage', metric}, {dataset: 'hot3d_hand_coverage', metric},
-  ]}])),
-  balancedScore: {balancedDatasetScore: {
-    datasets: [
-      {dataset: 'arctic_hand_coverage', bases: VIDIHAND_BALANCED.bases[0]},
-      {dataset: 'hot3d_hand_coverage', bases: VIDIHAND_BALANCED.bases[1]},
-    ],
-    metrics: VIDIHAND_COLUMNS.map(column => ({metric: column.metric, direction: column.direction})),
-  }},
-};
-
 const BENCHMARK_SUITES = Object.freeze({
   custom: {
     id: 'custom',
@@ -311,8 +167,8 @@ const BENCHMARK_SUITES = Object.freeze({
       ['hands_coverage', 'hot3d_hand_coverage'],
     ],
     liveDatasets: ['camera_hot3d', 'camera_arctic', 'arctic_hand_coverage', 'hot3d_hand_coverage'],
-    metricSuiteIds: ['hot3d_camera', 'arctic_camera', 'balanced_camera', 'vidihand'],
-    tableSuiteIds: ['hot3d_camera', 'arctic_camera', 'balanced_camera', 'vidihand'],
+    metricSuiteIds: ['hot3d_camera', 'arctic_camera', 'vidihand'],
+    tableSuiteIds: ['hot3d_camera', 'arctic_camera', 'vidihand'],
     metrics: [],
     tables: [],
   },
@@ -476,7 +332,7 @@ const BENCHMARK_SUITES = Object.freeze({
   hot3d_camera: {
     id: 'hot3d_camera',
     label: 'HOT3D 相机表',
-    description: '复现给定 HOT3D 全长相机轨迹横表；固定基线与本次 checkpoint 使用同一 SE(3)-only 口径。',
+    description: '本项目在统一数据、预处理和 SE(3)-only 指标实现下自行实测的 HOT3D 全长相机轨迹横表。',
     datasets: [
       {name: 'camera_hot3d', label: 'HOT3D · 全长相机轨迹', note: '27 条 · 94,978 帧',
        purpose: '使用去畸变针孔 JPEG 与逐帧 Aria MPS 公制 c2w；每条完整视频只做一次 SE(3) 对齐，统计序列级均值与中位数。'},
@@ -491,7 +347,7 @@ const BENCHMARK_SUITES = Object.freeze({
       ],
       datasets: [
         {label: 'GT', text: 'HOT3D rectified validation export；GT 为逐帧公制 camera-to-world，图像和轨迹严格同帧。'},
-        {label: '方法行', text: 'DROID-SLAM、HaWoR、InfiniteVGGT、LingBot-Map、MegaSaM 与两个 MINT checkpoint 均使用同一固定清单和同一指标实现。'},
+        {label: '方法行', text: 'DROID-SLAM、HaWoR、InfiniteVGGT、LingBot-Map、MegaSaM 与两个 MINT checkpoint 的固定数值均由本项目在同一清单和同一指标实现下实际运行得到，不是引用论文表格。'},
       ],
       warning: 'DROID-SLAM、InfiniteVGGT、LingBot-Map 不声明公制尺度，因此其不缩放 ATE/弧长比只记录当前输出尺度；MegaSaM 仅成功 24/27，不能把覆盖失败当作不存在。该 validation export 也不等同于论文隐藏 test split。',
     },
@@ -513,9 +369,9 @@ const BENCHMARK_SUITES = Object.freeze({
       {
         id: 'icra-hot3d-camera-comparison',
         title: 'HOT3D · 全长相机轨迹',
-        source: 'ICRA full/table.txt · 2026-08-14 · SE(3)-only',
+        source: 'MINT 统一实测 · ICRA full/table.txt · 2026-08-14 · SE(3)-only',
         referenceKind: 'local-baseline',
-        note: '27 条、94,978 帧；长度单位 mm。ATE/RPE 为序列级 RMSE 的均值/中位数，弧长比为 GT/pred。MegaSaM† 表示 no CVD 且仅覆盖 24/27。',
+        note: '本表所有固定方法行均由本项目实际运行所得，不是论文引用值。27 条、94,978 帧；长度单位 mm。ATE/RPE 为序列级 RMSE 的均值/中位数，弧长比为 GT/pred。MegaSaM† 表示 no CVD 且仅覆盖 24/27。',
         expectedSequences: 27,
         columns: ICRA_CAMERA_COLUMNS,
         rows: ICRA_HOT3D_CAMERA_ROWS,
@@ -529,7 +385,7 @@ const BENCHMARK_SUITES = Object.freeze({
   arctic_camera: {
     id: 'arctic_camera',
     label: 'ARCTIC 相机表',
-    description: '复现给定 ARCTIC 全长相机轨迹横表；与 HOT3D 独立成面板，避免跨数据集混合平均。',
+    description: '本项目在统一数据、预处理和 SE(3)-only 指标实现下自行实测的 ARCTIC 全长相机轨迹横表。',
     datasets: [
       {name: 'camera_arctic', label: 'ARCTIC · 全长相机轨迹', note: 'P2 val · 34 条 · 25,883 帧',
        purpose: '使用 ARCTIC s05 protocol P2 validation 的完整 egocentric 操作序列和公制 c2w；不使用 P1 的 81 帧 hand-coverage 切片。'},
@@ -544,6 +400,7 @@ const BENCHMARK_SUITES = Object.freeze({
       ],
       datasets: [
         {label: 'GT', text: 'ARCTIC protocol P2 validation，subject s05，34 条完整操作序列；共 25,883 帧。'},
+        {label: '方法行', text: 'DROID-SLAM、HaWoR、InfiniteVGGT、LingBot-Map、MegaSaM 与两个 MINT checkpoint 的固定数值均由本项目在同一清单和同一指标实现下实际运行得到，不是引用论文表格。'},
         {label: '与 ViDiHand 区别', text: 'ViDiHand 面板使用 P1 validation 的 81 帧相机系手部 coverage 协议；本面板只评完整相机轨迹，不能混用结果或输入。'},
       ],
       warning: 'DROID-SLAM、InfiniteVGGT、LingBot-Map 的输出本身没有公制度量保证；它们的 ATE/弧长比按当前尺度记录。这里只能在相同 P2 export、预处理和 whole-sequence SE(3)-only 指标下横向比较。',
@@ -566,9 +423,9 @@ const BENCHMARK_SUITES = Object.freeze({
       {
         id: 'icra-arctic-camera-comparison',
         title: 'ARCTIC · 全长相机轨迹',
-        source: 'ICRA full/table.txt · 2026-08-14 · SE(3)-only',
+        source: 'MINT 统一实测 · ICRA full/table.txt · 2026-08-14 · SE(3)-only',
         referenceKind: 'local-baseline',
-        note: 'P2 validation s05，34 条、25,883 帧；长度单位 mm。ATE/RPE 为序列级 RMSE 的均值/中位数，弧长比为 GT/pred。MegaSaM† 表示 no CVD。',
+        note: '本表所有固定方法行均由本项目实际运行所得，不是论文引用值。P2 validation s05，34 条、25,883 帧；长度单位 mm。ATE/RPE 为序列级 RMSE 的均值/中位数，弧长比为 GT/pred。MegaSaM† 表示 no CVD。',
         expectedSequences: 34,
         columns: ICRA_CAMERA_COLUMNS,
         rows: ICRA_ARCTIC_CAMERA_ROWS,
@@ -579,45 +436,10 @@ const BENCHMARK_SUITES = Object.freeze({
       },
     ],
   },
-  balanced_camera: {
-    id: 'balanced_camera',
-    label: '相机综合能力',
-    description: 'HOT3D 与 ARCTIC 各占 50%，用无量纲综合指数平衡不同量纲参数和数据规模。',
-    datasets: [
-      {name: 'camera_hot3d', label: 'HOT3D', note: '50%', purpose: '固定 27 条全长相机轨迹。'},
-      {name: 'camera_arctic', label: 'ARCTIC', note: '50%', purpose: '固定 34 条 P2 validation 全长相机轨迹。'},
-    ],
-    combos: [
-      ['camera_trajectory', 'camera_hot3d'],
-      ['camera_trajectory', 'camera_arctic'],
-    ],
-    liveDatasets: ['camera_hot3d', 'camera_arctic'],
-    metrics: [...ICRA_CAMERA_METRICS, {id: 'Balanced score', label: '综合指数', direction: 'min', unit: '', detail: {
-      name: 'Balanced cross-dataset camera score',
-      definition: '先在每个数据集内，将 8 项误差分别除以该数据集固定表的逐列最优值并等权平均，再除以完整序列覆盖率；最后 HOT3D 与 ARCTIC 各取 50%。',
-      alignment: '沿用两张原始表的 whole-sequence SE(3)-only 对齐，不重新对轨迹或最终分数做拟合。',
-      protocol: 'Score = 0.5×S_HOT3D + 0.5×S_ARCTIC；S_d = 100/Coverage_d × mean_k(error_dk / best_dk)。8 项为 ATE 均/中、RPE-T 均/中、RPE-R 均/中、|弧长比−1|、ATE%。',
-      local: '越低越好；100 表示在满覆盖条件下同时达到每项固定表最优值的理论基准。它是本页面定义的模型选择指数，不是论文官方指标。'}}],
-    tables: [
-      {
-        id: 'icra-balanced-camera-comparison',
-        title: 'HOT3D 50% + ARCTIC 50% · 平衡综合能力',
-        source: 'Derived from ICRA full/table.txt · balanced-v1',
-        referenceKind: 'local-baseline',
-        note: '所有 50/50 列均为两个数据集等权平均，不按帧数或序列数加权。弧长比列显示 50%×|HOT3D比值−1| + 50%×|ARCTIC比值−1|。综合指数先在各数据集内按固定表逐项最优值归一化，8 项等权并按覆盖率惩罚，再以 HOT3D 50% + ARCTIC 50% 汇总；越低越好，属于本页面定义的综合模型选择指标。',
-        columns: ICRA_BALANCED_CAMERA_COLUMNS,
-        rows: ICRA_BALANCED_CAMERA.rows,
-        liveRows: [
-          {label: 'HOT3D + ARCTIC · 本次 checkpoint', head: 'camera_trajectory', dataset: 'camera_hot3d', group: 'overall', comparable: true,
-           values: ICRA_BALANCED_CAMERA_LIVE_VALUES},
-        ],
-      },
-    ],
-  },
   vidihand: {
     id: 'vidihand',
     label: 'ViDiHand 对比',
-    description: 'ViDiHand Table 1 的 ARCTIC + HOT3D SOTA 表，以及本地 coverage-aware 81 帧实时结果。',
+    description: '两张固定对比表的方法与数值全部直接引用自 ViDiHand 论文 Table 1，未由本项目重新实测或修改；用户运行后的本次模型结果会另行追加。ViDiHand 训练使用了 ARCTIC 和 HOT3D，相关论文指标仅作同域参考。',
     datasets: [
       {name: 'arctic_hand_coverage', label: 'ARCTIC · ViDiHand coverage-aware', note: 'P1 val · 81 帧',
        purpose: '专测 ARCTIC 操作场景中的双手出现检测和相机系姿态；81 帧单次前向，漏检进入姿态惩罚。'},
@@ -626,17 +448,17 @@ const BENCHMARK_SUITES = Object.freeze({
     ],
     guide: {
       title: 'ViDiHand coverage-aware 协议',
-      summary: '公开 Table 1 同时评测手是否被检测到、检测到后的 3D pose、朝向/位置和时序稳定性。所有 pose 指标都把 detection coverage 折入：漏检不会从分母中消失，而会使用 canonical MANO 或图像对角线等惩罚。',
+      summary: '面板中的固定方法行和数值全部原样引用自 ViDiHand 论文 Table 1，本项目没有重新运行或修改这些论文数值。Table 1 同时评测手是否被检测到、检测后的 3D pose、朝向/位置和时序稳定性；漏检会使用 canonical MANO 或图像对角线等惩罚。',
       stages: [
         {label: 'Detection', text: 'FAcc、Recall、F1 衡量左右手 presence；固定左右槽位，不做跨手匹配。'},
         {label: '3D Pose', text: 'MPJPE-p 与 PA-MPJPE-p 对所有屏幕内 GT 手统计，包括漏检惩罚。'},
-        {label: '位置与时序', text: 'EPE-p、GO-p、CT-p 分别衡量 2D 投影、全局朝向和相机系平移；Jitter 衡量连续检出轨迹的二阶差分。'},
+        {label: '位置与时序', text: 'GO-p、CT-p 分别衡量全局朝向和相机系平移；Jitter 衡量连续检出轨迹的二阶差分。'},
       ],
       datasets: [
-        {label: 'ARCTIC', text: '论文公开 benchmark；对所有方法都从显式监督训练中 held out。本地使用 protocol P1 validation 81 帧片段。'},
-        {label: 'HOT3D', text: '论文公开 benchmark；对所有方法都从显式监督训练中 held out。本地使用确定性的 local holdout 81 帧片段。'},
+        {label: 'ARCTIC', text: 'ViDiHand 的训练使用了 ARCTIC；表中 ViDiHand 数值仅作为同域参考，不表示在未见数据上的泛化能力。本地使用 protocol P1 validation 81 帧片段。'},
+        {label: 'HOT3D', text: 'ViDiHand 的训练使用了 HOT3D；表中 ViDiHand 数值仅作为同域参考，不表示在未见数据上的泛化能力。本地使用确定性的 local holdout 81 帧片段。'},
       ],
-      warning: '公开 Table 1 与本地 P1 validation/local holdout 通常不是相同 split；实时表会并列展示，但不会把更优数字自动宣称为新 SOTA。',
+      warning: '固定对比表全部是 ViDiHand 论文引用数据，不是本项目实测；只有用户启动评测后追加的“本次模型”行来自本地运行。ViDiHand 使用 HOT3D 和 ARCTIC 训练，因此其论文指标仅供同域参考，不具备跨数据集泛化意义。',
     },
     combos: [
       ['hands_coverage', 'arctic_hand_coverage'],
@@ -646,11 +468,11 @@ const BENCHMARK_SUITES = Object.freeze({
     liveMetricAliases: {
       FAcc: 'FAcc', Recall: 'Recall', F1: 'F1',
       'MPJPE-p': 'MPJPE-p', 'PA-MPJPE-p': 'PA-MPJPE-p',
-      'EPE-p': 'EPE-p', 'GO-p': 'GO-p', 'CT-p': 'CT-p', Jitter: 'Jitter',
+      'GO-p': 'GO-p', 'CT-p': 'CT-p', Jitter: 'Jitter',
     },
     liveMetricUnits: {
       FAcc: '', Recall: '', F1: '', 'MPJPE-p': 'mm', 'PA-MPJPE-p': 'mm',
-      'EPE-p': 'px', 'GO-p': 'deg', 'CT-p': 'm', Jitter: 'mm/frame2',
+      'GO-p': 'deg', 'CT-p': 'm', Jitter: 'mm/frame2',
     },
     metrics: [
       {id: 'FAcc', label: 'FAcc', direction: 'max', unit: '', detail: {
@@ -683,12 +505,6 @@ const BENCHMARK_SUITES = Object.freeze({
         alignment: 'TP 使用旋转、平移、尺度对齐；FN 没有预测可对齐，因此使用固定 canonical penalty。',
         protocol: '所有屏幕内 GT 手（TP + FN）进入分母，越低越好。',
         local: '本地实现显式保留 FN 惩罚，不能与只在检出帧算 PA-MPJPE 的普通协议比较。'}},
-      {id: 'EPE-p', label: 'EPE-p', direction: 'min', unit: 'px', detail: {
-        name: 'Coverage-aware 2D Endpoint Error',
-        definition: '检出手将 3D 关节投影到图像，计算屏幕内 GT 关节的像素距离；漏检关节以图像对角线作为惩罚。',
-        alignment: '使用每个数据集/序列的相机内参，不做 2D 相似变换对齐。',
-        protocol: '误差按所有有效投影关节汇总，单位 px，越低越好。',
-        local: '本地 HOT3D 使用 480×480 协议内参，ARCTIC 使用逐序列标定内参。'}},
       {id: 'GO-p', label: 'GO-p', direction: 'min', unit: 'deg', detail: {
         name: 'Coverage-aware Global Orientation Error',
         definition: '检出手计算预测与 GT 手部全局旋转矩阵之间的测地线角；漏检使用 canonical orientation 惩罚。',
@@ -707,48 +523,30 @@ const BENCHMARK_SUITES = Object.freeze({
         alignment: '只在至少 3 帧的连续 TP track 内计算，避免跨漏检断点制造伪抖动。',
         protocol: '属于 Temporal 指标，单位 mm/frame²，越低越平滑。',
         local: '本地按整个 corpus 累计二阶差分样本；它不是乘 fps² 的 HaWoR Accel。'}},
-      {id: 'ViDiHand balanced score', label: 'ViDiHand 综合指数', direction: 'min', unit: '', detail: {
-        name: 'Balanced cross-dataset ViDiHand score',
-        definition: '在 ARCTIC 与 HOT3D 内分别把 9 项指标相对该数据集论文公开最优值归一化，再对 9 项等权平均；最终两个数据集各占 50%。',
-        alignment: '不对原始 ViDiHand 指标增加新的几何对齐；只在标量层做无量纲化。',
-        protocol: 'Detection 三项使用 best/value，六项误差使用 value/best。Score = 0.5×100×mean(ARCTIC normalized costs) + 0.5×100×mean(HOT3D normalized costs)。',
-        local: '越低越好；100 是在两套数据的每一项都达到论文表逐项最优值的理论基准。固定 MINT 行来自 sota-fixed-v1 50% 本地清单，因此不代表同 split 论文复现。'}},
     ],
     tables: [
       {
         id: 'vidihand-arctic',
         title: 'ARCTIC',
-        source: 'ViDiHand Table 1 · coverage-aware §4.1',
-        note: '论文公开 benchmark；ARCTIC 对所有方法都从显式监督训练中 held out。当前本地为 P1 validation 81 帧协议，只有 report 标记同 split 时才可直接判断 SOTA。† MINT step 4500 UKF 与 step 19000 raw 固定行来自同一 sota-fixed-v1 50% 清单（151/302），不是论文 test split。',
+        source: '引用：ViDiHand 论文 Table 1 · coverage-aware §4.1',
+        note: '表内固定方法行和数值全部直接引用自 ViDiHand 论文，未由本项目重新实测或修改。ViDiHand 使用了 ARCTIC 训练，其论文指标仅供同域参考，不具备跨数据集泛化意义；用户实际运行的结果会作为“本次模型”行单独追加。',
         columns: VIDIHAND_COLUMNS,
         rows: VIDIHAND_ARCTIC_ROWS,
         liveRows: [
-          {label: 'coverage-aware local', head: 'hands_coverage', dataset: 'arctic_hand_coverage', group: 'overall', requiresSameSplit: true,
+          {label: '本项目实测 · 本次模型（非论文引用值）', head: 'hands_coverage', dataset: 'arctic_hand_coverage', group: 'overall', requiresSameSplit: true,
            values: VIDIHAND_LIVE_VALUES},
         ],
       },
       {
         id: 'vidihand-hot3d',
         title: 'HOT3D',
-        source: 'ViDiHand Table 1 · coverage-aware §4.1',
-        note: '论文公开 benchmark；HOT3D 对所有方法都从显式监督训练中 held out。当前本地为 deterministic holdout 81 帧协议，只有 report 标记同 split 时才可直接判断 SOTA。† MINT step 4500 UKF 与 step 19000 raw 固定行来自同一 sota-fixed-v1 50% 清单（219/437），不是论文 test split。',
+        source: '引用：ViDiHand 论文 Table 1 · coverage-aware §4.1',
+        note: '表内固定方法行和数值全部直接引用自 ViDiHand 论文，未由本项目重新实测或修改。ViDiHand 使用了 HOT3D 训练，其论文指标仅供同域参考，不具备跨数据集泛化意义；用户实际运行的结果会作为“本次模型”行单独追加。',
         columns: VIDIHAND_COLUMNS,
         rows: VIDIHAND_HOT3D_ROWS,
         liveRows: [
-          {label: 'coverage-aware local', head: 'hands_coverage', dataset: 'hot3d_hand_coverage', group: 'overall', requiresSameSplit: true,
+          {label: '本项目实测 · 本次模型（非论文引用值）', head: 'hands_coverage', dataset: 'hot3d_hand_coverage', group: 'overall', requiresSameSplit: true,
            values: VIDIHAND_LIVE_VALUES},
-        ],
-      },
-      {
-        id: 'vidihand-balanced',
-        title: 'ARCTIC 50% + HOT3D 50% · 平衡综合能力',
-        source: 'Derived from ViDiHand Table 1 + local sota-fixed-v1 · balanced-v1',
-        note: '每个 50/50 列都是 ARCTIC 与 HOT3D 的算术平均，不按片段数加权。综合指数先在各数据集内相对论文公开逐项最优值归一化：FAcc/Recall/F1 用 best/value，其余误差用 value/best；9 项等权，再将 ARCTIC 与 HOT3D 各取 50%。越低越好；† MINT 固定行来自本地 50% 清单，与论文 test split 不同。',
-        columns: VIDIHAND_BALANCED_COLUMNS,
-        rows: VIDIHAND_BALANCED.rows,
-        liveRows: [
-          {label: 'ARCTIC + HOT3D · coverage-aware local', head: 'hands_coverage', dataset: 'arctic_hand_coverage', group: 'overall', comparable: false,
-           values: VIDIHAND_BALANCED_LIVE_VALUES},
         ],
       },
     ],

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.metadata
 import importlib.util
 import json
@@ -34,6 +35,21 @@ def _module(name: str, required: bool = True) -> Check:
     return Check(name, found, version, required)
 
 
+def _model_stack() -> Check:
+    """Import the same model modules used when the Viewer loads a checkpoint."""
+    model_train = PROJECT_DIR / "model_train"
+    for path in (model_train, model_train / "_vendor"):
+        value = str(path)
+        if path.is_dir() and value not in sys.path:
+            sys.path.insert(0, value)
+    try:
+        importlib.import_module("models")
+        importlib.import_module("lingbot_map.models.gct_stream")
+    except Exception as exc:
+        return Check("MINT model stack", False, f"{type(exc).__name__}: {exc}")
+    return Check("MINT model stack", True, "importable")
+
+
 def run_checks(profile: str) -> list[Check]:
     checks = [
         Check("python", sys.version_info[:2] == (3, 10), sys.version.split()[0]),
@@ -50,7 +66,12 @@ def run_checks(profile: str) -> list[Check]:
             _module("smplx"),
             _module("torchao"),
             _module("decord"),
+            _module("einops"),
+            _module("huggingface_hub"),
             _module("pyarrow"),
+            _module("safetensors"),
+            _module("tqdm"),
+            _model_stack(),
         ])
         right = PROJECT_DIR / "assets" / "mano" / "mano_right" / "MANO_RIGHT.pkl"
         left = PROJECT_DIR / "assets" / "mano" / "mano_left" / "MANO_LEFT.pkl"

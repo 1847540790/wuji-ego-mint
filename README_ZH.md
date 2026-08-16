@@ -150,6 +150,8 @@ python scripts/build_sample_lerobot.py \
 
 `eval/model_effect/benchmark/` 与对应测试完整开源，并已接入 Viewer 顶栏的 Benchmark 面板。使用前需自行下载hot3d和arctic并按各 adapter 要求组织 benchmark 数据、安装可选依赖；也可独立运行 CLI：
 
+**Benchmark 结果诚信声明。** 我们承诺，本项目报告的每一项测试指标均为按照所述评测协议实际运行所得的真实结果，不会对原始数值进行任何人为修改。如需精确复现其他方法或 baseline 的具体数值，请直接使用对应方法的官方仓库与原始环境。MINT 使用的指标定义、对齐规则、聚合逻辑和报告代码均公开在 `eval/model_effect/benchmark/` 中，可直接检查具体计算方式。
+
 ```bash
 python eval/model_effect/benchmark/run.py \
   --ckpt /path/to/checkpoint \
@@ -181,24 +183,25 @@ mint/
 - [安装](docs/installation.md)
 - [数据管线](docs/data-pipeline.md)
 - [训练](docs/training.md)
+- [LeRobot 训练数据格式](docs/lerobot-training-data.md)
 - [推理与 Viewer](docs/inference.md)
 - [隐私与发布检查](docs/privacy.md)
 - [安全策略](SECURITY.md)
 
+## 数据管线复现说明
+
+用于产出第一视角训练数据的生产管线涉及众多第三方依赖，并需要持续适配上游接口变动。受部分第三方依赖库许可证限制，我们无法直接开源生产过程中修改或适配后的全部第三方源码，因此本仓库不包含完整生产环境中的每一处内部改动。如需复现完整数据管线，建议先按照各自许可证安装对应第三方库的原始版本，再以本仓库已经开源的数据管线编排、接口和数据流代码为实现参考；也可以借助 AI 编程工具理解上游接口差异并补齐所需的兼容层。
+
 ## 致谢
 
-MINT 的实现离不开以下研究项目、开源库、工具与数据集。前三项按照它们对本仓库的主要技术贡献排序。
+MINT 的实现离不开以下研究项目、模型与数据集。前三项按照它们对本仓库的主要技术贡献排序。
 
 - **VITRA** — MINT 的数据处理架构、第一视角重建流程、世界坐标系相机/手部标注以及 LeRobot 转换规范均由 VITRA 与 VITRA-1M 数据引擎演进而来。
 - **[LingBot-Map](https://github.com/robbyant/lingbot-map)** — 提供 MINT 相机与手部训练、推理所使用的核心模型架构和上游适配源码。
 - **[HaWoR](https://github.com/ThunderVVV/HaWoR)** — 为可选数据管线提供单目手部运动重建、MANO 估计、跟踪和世界坐标系手部处理组件；使用时仍须遵守其上游非商业、禁止演绎许可。
 - **相机、深度与跟踪研究** — [GeoCalib](https://github.com/cvg/GeoCalib)、[MoGe](https://github.com/microsoft/MoGe)、[Mega-SAM](https://github.com/mega-sam/mega-sam)、[DROID-SLAM](https://github.com/princeton-vl/DROID-SLAM)、[UniDepth](https://github.com/lpiccinelli-eth/UniDepth)、[Metric3D](https://github.com/YvanYin/Metric3D)、[DeepCalib](https://github.com/alexvbogdan/DeepCalib)、[DINOv2](https://github.com/facebookresearch/dinov2)、[VGGT](https://github.com/facebookresearch/vggt)、InfiniteVGGT 和 [PyTorch3D](https://github.com/facebookresearch/pytorch3d)。
 - **手部模型、仿真与重定向** — [MANO](https://mano.is.tue.mpg.de)、[SMPL-X](https://smpl-x.is.tue.mpg.de)、[MuJoCo](https://mujoco.org)，以及 Viewer 可选面板使用的 Wuji hand description 与 retargeting 组件。
-- **模型训练与分发** — [PyTorch](https://pytorch.org)、[TorchVision](https://github.com/pytorch/vision)、[TorchAO](https://github.com/pytorch/ao)、[timm](https://github.com/huggingface/pytorch-image-models)、[einops](https://github.com/arogozhnikov/einops)、[FlashInfer](https://github.com/flashinfer-ai/flashinfer)、[Accelerate](https://github.com/huggingface/accelerate)、[Hugging Face Hub](https://github.com/huggingface/huggingface_hub)、[ModelScope](https://github.com/modelscope/modelscope)、[Safetensors](https://github.com/huggingface/safetensors) 和 [Weights & Biases](https://wandb.ai)。
-- **数据、调度与媒体处理** — [Ray](https://github.com/ray-project/ray)、[LeRobot](https://github.com/huggingface/lerobot)、[NumPy](https://numpy.org)、[SciPy](https://scipy.org)、[pandas](https://pandas.pydata.org)、[Apache Arrow/PyArrow](https://arrow.apache.org)、[OpenCV](https://opencv.org)、[Decord](https://github.com/dmlc/decord)、[FFmpeg](https://ffmpeg.org)、[PyYAML](https://pyyaml.org)、[tqdm](https://github.com/tqdm/tqdm)、[joblib](https://joblib.readthedocs.io)、[natsort](https://github.com/SethMMorton/natsort)、[psutil](https://github.com/giampaolo/psutil) 和 [NVIDIA ML Python](https://pypi.org/project/nvidia-ml-py/)。
-- **Viewer、评测与可选集成** — [Flask](https://flask.palletsprojects.com)、[Matplotlib](https://matplotlib.org)、[Ultralytics](https://github.com/ultralytics/ultralytics)、[TensorFlow](https://www.tensorflow.org) 和 [Project Aria Tools](https://github.com/facebookresearch/projectaria_tools)。
 - **数据集与 benchmark** — [HOT3D](https://github.com/facebookresearch/hot3d)、[ARCTIC](https://arctic.is.tue.mpg.de)、[Ego4D](https://ego4d-data.org)、[EPIC-KITCHENS](https://epic-kitchens.github.io) 和 [EgoDex](https://ego-dex.github.io)；数据访问和再分发始终以各数据集自身条款为准。
-- **开发与打包工具** — [pytest](https://pytest.org)、[Ruff](https://github.com/astral-sh/ruff)、[pre-commit](https://pre-commit.com)、[setuptools](https://github.com/pypa/setuptools)、[wheel](https://github.com/pypa/wheel)、[CMake](https://cmake.org) 和 [Ninja](https://ninja-build.org)。
 
 感谢所有上游作者和维护者。致谢不能替代引用或许可证义务；使用或分发前请阅读[第三方声明](THIRD_PARTY_NOTICES.md)。
 

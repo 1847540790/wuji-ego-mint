@@ -10,6 +10,10 @@ The retained historical recipes intentionally point to the shared CPFS data
 and checkpoint locations used by those runs. Update those paths only when
 reproducing the stages in a different environment.
 
+See [LeRobot v3 training data contract](lerobot-training-data.md) for the exact
+directory layout, Parquet columns, coordinate conventions, masks, video-frame
+alignment, and clip construction used by these recipes.
+
 ## Inspect first
 
 ```bash

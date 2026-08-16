@@ -189,7 +189,6 @@
     ['相机轨迹对比', 'Camera Trajectory Comparison'],
     ['HOT3D 相机表', 'HOT3D Camera Table'],
     ['ARCTIC 相机表', 'ARCTIC Camera Table'],
-    ['相机综合能力', 'Overall Camera Capability'],
     ['ViDiHand 对比', 'ViDiHand Comparison'],
     ['全部评测', 'All Evaluations'],
     ['公开 SOTA + 本次模型 · 实时', 'Published SOTA + Current Models · Live'],

@@ -3329,7 +3329,7 @@ function renderBenchSuitePanel(){
   });
   if(!picker) return;
   if(suite.id==='custom'){
-    picker.innerHTML='<span class="bmut">完整网格不限制结果指标；切换到相机表、50/50 综合能力或 ViDiHand 可使用对应口径的逐项指标筛选。</span>';
+    picker.innerHTML='<span class="bmut">完整网格不限制结果指标；切换到相机表或 ViDiHand 可使用对应口径的逐项指标筛选。</span>';
     return;
   }
   const openKey=state.bench.metricDetailOpen;
@@ -3456,7 +3456,7 @@ function benchSotaDatasetSelection(){
   for(const dataset of Object.keys(BENCH_SOTA_FULL_COUNTS)){
     const available=benchDatasetAvailable(dataset);
     const fixed={fixed_tier:state.bench.samplePreset,split_version:BENCH_SOTA_FIXED_SPLIT_VERSION};
-    // Camera tables and their 50/50 score use the fixed complete sequence lists.
+    // Camera tables use the fixed complete sequence lists.
     if(dataset==='camera_hot3d'||dataset==='camera_arctic'){
       selection[dataset]={sampling:'all',...fixed}; continue;
     }
@@ -4173,8 +4173,8 @@ function benchSotaTableHTML(suite,table,entries,running){
 function benchSotaLiveHTML(results,liveReport,activeModel,running){
   const entries=benchResultEntries(results,liveReport,activeModel);
   const current=currentBenchSuite();
-  const dedicated=['camera','hot3d_camera','arctic_camera','balanced_camera','vidihand'].includes(current.id);
-  const suiteIds=current.tableSuiteIds||(dedicated?[current.id]:['hot3d_camera','arctic_camera','balanced_camera','vidihand']);
+  const dedicated=['camera','hot3d_camera','arctic_camera','vidihand'].includes(current.id);
+  const suiteIds=current.tableSuiteIds||(dedicated?[current.id]:['hot3d_camera','arctic_camera','vidihand']);
   const suites=suiteIds.map(id=>BENCHMARK_SUITES[id]).filter(Boolean);
   const cards=[];
   for(const suite of suites){

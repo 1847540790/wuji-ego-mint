@@ -198,6 +198,13 @@ The complete implementation and tests live in `eval/model_effect/benchmark/`
 and are integrated into the Viewer's Benchmark panel. Users provide datasets
 and install the optional runtime themselves; the CLI remains available:
 
+**Benchmark integrity statement.** We commit that every metric reported by this
+project is an authentic result produced under the stated evaluation protocol;
+we do not alter the original numeric results. To reproduce a baseline or another
+method's exact values, use that method's official repository and environment.
+The metric definitions, alignment rules, aggregation logic, and reporting code
+used by MINT are available in `eval/model_effect/benchmark/` for inspection.
+
 ```bash
 python eval/model_effect/benchmark/run.py \
   --ckpt /path/to/checkpoint \
@@ -232,14 +239,27 @@ mint/
 - [Installation](docs/installation.md)
 - [Data pipeline](docs/data-pipeline.md)
 - [Training](docs/training.md)
+- [LeRobot training data format](docs/lerobot-training-data.md)
 - [Inference and viewer](docs/inference.md)
 - [Privacy and release checklist](docs/privacy.md)
 - [Security policy](SECURITY.md)
 
+## Data-pipeline reproducibility
+
+The production pipeline used to generate egocentric training data spans many
+third-party dependencies and has had to track substantial upstream API changes.
+Some adapted third-party source files cannot be redistributed directly because
+of their licenses, so this repository does not contain every internal
+modification used in production. To reproduce the full pipeline, install the
+corresponding original upstream libraries under their own license terms, then
+use the open pipeline orchestration, interfaces, and data-flow code in this
+repository as the implementation reference. AI-assisted coding tools can help
+map upstream API differences and reconstruct the required compatibility layer.
+
 ## Acknowledgements
 
-MINT is made possible by the following research projects, open-source libraries,
-tools, and datasets. The first three acknowledgements reflect the primary
+MINT is made possible by the following research projects, models, and datasets.
+The first three acknowledgements reflect the primary
 technical foundations of this repository.
 
 - **VITRA** — MINT's data-processing architecture, egocentric reconstruction workflow, world-space camera/hand annotations, and LeRobot conversion conventions evolved from the VITRA and VITRA-1M data engine.
@@ -247,11 +267,7 @@ technical foundations of this repository.
 - **[HaWoR](https://github.com/ThunderVVV/HaWoR)** — provides monocular hand motion reconstruction, MANO estimation, tracking, and world-space hand-processing components used by the optional data pipeline. Its use remains subject to the upstream non-commercial, no-derivatives license.
 - **Camera, depth, and tracking research** — [GeoCalib](https://github.com/cvg/GeoCalib), [MoGe](https://github.com/microsoft/MoGe), [Mega-SAM](https://github.com/mega-sam/mega-sam), [DROID-SLAM](https://github.com/princeton-vl/DROID-SLAM), [UniDepth](https://github.com/lpiccinelli-eth/UniDepth), [Metric3D](https://github.com/YvanYin/Metric3D), [DeepCalib](https://github.com/alexvbogdan/DeepCalib), [DINOv2](https://github.com/facebookresearch/dinov2), [VGGT](https://github.com/facebookresearch/vggt), InfiniteVGGT, and [PyTorch3D](https://github.com/facebookresearch/pytorch3d).
 - **Hand models, simulation, and retargeting** — [MANO](https://mano.is.tue.mpg.de), [SMPL-X](https://smpl-x.is.tue.mpg.de), [MuJoCo](https://mujoco.org), and the Wuji hand description and retargeting components used by the optional Viewer panels.
-- **Model training and distribution** — [PyTorch](https://pytorch.org), [TorchVision](https://github.com/pytorch/vision), [TorchAO](https://github.com/pytorch/ao), [timm](https://github.com/huggingface/pytorch-image-models), [einops](https://github.com/arogozhnikov/einops), [FlashInfer](https://github.com/flashinfer-ai/flashinfer), [Accelerate](https://github.com/huggingface/accelerate), [Hugging Face Hub](https://github.com/huggingface/huggingface_hub), [ModelScope](https://github.com/modelscope/modelscope), [Safetensors](https://github.com/huggingface/safetensors), and [Weights & Biases](https://wandb.ai).
-- **Data, orchestration, and media** — [Ray](https://github.com/ray-project/ray), [LeRobot](https://github.com/huggingface/lerobot), [NumPy](https://numpy.org), [SciPy](https://scipy.org), [pandas](https://pandas.pydata.org), [Apache Arrow/PyArrow](https://arrow.apache.org), [OpenCV](https://opencv.org), [Decord](https://github.com/dmlc/decord), [FFmpeg](https://ffmpeg.org), [PyYAML](https://pyyaml.org), [tqdm](https://github.com/tqdm/tqdm), [joblib](https://joblib.readthedocs.io), [natsort](https://github.com/SethMMorton/natsort), [psutil](https://github.com/giampaolo/psutil), and [NVIDIA ML Python](https://pypi.org/project/nvidia-ml-py/).
-- **Viewer, evaluation, and optional integrations** — [Flask](https://flask.palletsprojects.com), [Matplotlib](https://matplotlib.org), [Ultralytics](https://github.com/ultralytics/ultralytics), [TensorFlow](https://www.tensorflow.org), and [Project Aria Tools](https://github.com/facebookresearch/projectaria_tools).
 - **Datasets and benchmarks** — [HOT3D](https://github.com/facebookresearch/hot3d), [ARCTIC](https://arctic.is.tue.mpg.de), [Ego4D](https://ego4d-data.org), [EPIC-KITCHENS](https://epic-kitchens.github.io), and [EgoDex](https://ego-dex.github.io). Dataset access and redistribution remain governed by each dataset's own terms.
-- **Development and packaging tools** — [pytest](https://pytest.org), [Ruff](https://github.com/astral-sh/ruff), [pre-commit](https://pre-commit.com), [setuptools](https://github.com/pypa/setuptools), [wheel](https://github.com/pypa/wheel), [CMake](https://cmake.org), and [Ninja](https://ninja-build.org).
 
 We thank all upstream authors and maintainers. This acknowledgement does not
 replace their citation or license requirements; see

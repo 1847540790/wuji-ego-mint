@@ -38,8 +38,8 @@ METHOD_LABELS = {
     "infinitevggt": "InfiniteVGGT",
     "lingbotmap": "LingBot-Map",
     "egopipeline": "EgoPipeline",
-    "ours_step4500": "Ours step4500",
-    "ours_step19000": "Ours step19000",
+    "ours_step4500": "MINT (Stage 2 camera-trajectory fine-tuned)",
+    "ours_step19000": "MINT (camera trajectory not fine-tuned)",
 }
 DEFAULT_METHODS = tuple(METHOD_LABELS)
 EXPECTED_VARIANT_PREFIXES = {
