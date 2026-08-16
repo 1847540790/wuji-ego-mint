@@ -2,9 +2,9 @@
 
 [English](README.md)
 
-MINT 是一个面向第一视角相机与手部模型推理、训练、效果可视化和 benchmark 的开源工具包。公开仓库同时提供可复用的 Ray 调度、数据流、轨迹清理和 LeRobot 导出组件，但不是生产级数据生成管线的完整可分发副本。
+MINT 致力于让每个人都能跳过复杂的工程搭建与优化步骤，直接、便捷地批量产出可用的第一视角（Ego）数据，加速 Ego 数据相关模型的训练与验证，推动 Ego 数据及其应用的发展。
 
-公开 Git 仓库包含一个小于 20 MB 的 Hot3D LeRobot v3 样例和 benchmark 实现，但不包含完整数据集、模型权重、MANO 资产、访问凭证或私有基础设施配置。公开 MINT 模型托管于 Hugging Face 和 ModelScope，由下载脚本保存到本地忽略目录。Benchmark 所需数据、依赖和本地或云端运行环境由使用者自行准备。
+本仓库包含 Ego 重建模型的训练与推理代码，以及模型训练所需的 Ego 数据生产管线代码。如果您的目标是快速产出大批量 Ego 数据，可以直接下载我们发布的 checkpoint 并使用推理代码，无需从头训练。仓库中提供了可直接运行的样例，详细使用方式请参见[快速开始：Web Viewer](#快速开始web-viewer)。
 
 ## 快速开始：Web Viewer
 
@@ -12,17 +12,52 @@ Web Viewer 是 MINT 的主要入口，可以在一个界面中选择 checkpoint�
 
 **硬件要求：MINT 模型推理需要 NVIDIA GPU，显存至少为 24 GB。**
 
-安装推理环境、下载公开 MINT 模型并启动 Viewer：
+安装推理环境、下载公开 MINT 模型并准备 MANO 手部模型，然后启动 Viewer。MANO 需要在[官方网站](https://mano.is.tue.mpg.de/)注册账号、接受许可证并手动下载，本项目不能代为下载或分发：
 
 ```bash
-git clone git@github.com:1847540790/wuji-ego-mint.git
+git clone https://github.com/wuji-technology/wuji-ego-mint.git
 cd wuji-ego-mint
 bash scripts/create_env.sh inference
 conda activate mint-inference
 bash scripts/download_assets.sh
+
+# 从下载并解压后的 MANO 文件中复制左右手模型。
+mkdir -p assets/mano/mano_right assets/mano/mano_left
+cp /path/to/MANO_RIGHT.pkl assets/mano/mano_right/MANO_RIGHT.pkl
+cp /path/to/MANO_LEFT.pkl assets/mano/mano_left/MANO_LEFT.pkl
+
 python -m mint doctor --profile inference
 python -m mint viewer
 ```
+
+### 模型与资产放置路径
+
+Quick Start 使用的模型与资产请按下表放置。`scripts/download_assets.sh` 会自动下载公开 MINT checkpoint；MANO 需由使用者从官方网站下载后手动复制。
+
+| 模型或资产 | 下载来源 | 仓库内放置路径 | 说明 |
+| --- | --- | --- | --- |
+| MINT checkpoint | [ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) 或 [Hugging Face](https://huggingface.co/ZZJAsher/mint_v1) | `checkpoints/model.safetensors` | 下载脚本会自动放置并校验；手动下载时也应使用该路径。 |
+| MANO 右手模型 | [MANO 官网](https://mano.is.tue.mpg.de/) | `assets/mano/mano_right/MANO_RIGHT.pkl` | 需要注册并接受 MANO License。 |
+| MANO 左手模型 | [MANO 官网](https://mano.is.tue.mpg.de/) | `assets/mano/mano_left/MANO_LEFT.pkl` | 需要注册并接受 MANO License。 |
+| LingBot-Map 预训练骨干 | [LingBot-Map](https://github.com/robbyant/lingbot-map) | `assets/models/lingbot-map.pt` | 可选资产，仅在对应配置需要时下载。 |
+| Wuji Hand URDF、MJCF 和 STL | 已包含在本仓库 | `eval/simulate/wuji-retargeting/wuji_retargeting/wuji-description/hand/body/` | 无需额外下载。 |
+
+如果需要复现 Ego 数据生产管线，还需根据各上游项目的许可证自行下载相应权重，并放到以下固定路径：
+
+| 数据管线资产 | 仓库内放置路径 |
+| --- | --- |
+| GeoCalib 权重 | `model/geocalib/pinhole.tar` |
+| MoGe 权重 | `model/moge2/model.pt` |
+| Mega-SAM 权重 | `model/megasam/megasam_final.pth` |
+| HaWoR 权重 | `model/hawor/hawor.ckpt` |
+| HaWoR 配置 | `model/hawor/model_config.yaml` |
+| HaWoR 检测器 | `model/hawor/detector.pt` |
+| DROID-SLAM 权重 | `third_party/HaWoR/weights/external/droid.pth` |
+| Metric3D 权重 | `third_party/HaWoR/thirdparty/Metric3D/weights/metric_depth_vit_large_800k.pth` |
+| HaWoR 右手 MANO | `third_party/HaWoR/_DATA/data/mano/MANO_RIGHT.pkl` |
+| HaWoR 左手 MANO | `third_party/HaWoR/_DATA/data_left/mano_left/MANO_LEFT.pkl` |
+
+Benchmark 数据没有强制的仓库内目录，可在运行时通过 `--data-root /path/to/benchmark-data` 指向下载并整理后的 HOT3D、ARCTIC 等数据集。
 
 Viewer 启动后会自动在默认浏览器打开 `http://127.0.0.1:8011`，然后依次操作：
 
@@ -81,6 +116,17 @@ python -m mint train --config configs/training/mint_step2.yaml
 Stage 2 配置中的 `train.init_from` 已指向 Stage 1 的 `step_00019000/model.safetensors`。`--inspect` 不读取数据集，仅构建模型并输出结构，建议将它作为训练配置的第一项检查。
 
 `mint train` 消费由使用者单独准备的兼容 LeRobot 数据集并产出训练 checkpoint。训练完成后，可直接在 Viewer 面板中选择并检查新的 checkpoint。
+
+## 公开 Ego 预训练数据
+
+我们提供了由本仓库 Ego 数据生产管线处理得到的 `ego4d`、`egodex` 和 `epickitchen` 非视频数据，可从以下任一平台下载：
+
+- [Hugging Face：ZZJAsher/wuji_ego_mint](https://huggingface.co/datasets/ZZJAsher/wuji_ego_mint)
+- [ModelScope：AsherZhu/wuji_ego_mint](https://www.modelscope.cn/datasets/AsherZhu/wuji_ego_mint)
+
+**重要说明：这些数据中的相机轨迹由本仓库的 Ego 数据管线处理生成，当前存在明显的尺度放大现象。建议仅将其用于本项目 Ego 手部重建模型的预训练，不建议用于真实尺度评估、精确相机轨迹评测或作为真实尺度 Ground Truth。**
+
+公开数据集不包含 `.mp4` 视频。原始视频分别来自 Ego4D、EgoDex 和 EPIC-KITCHENS，受各自数据集许可证及访问条款约束，无法由本项目重新分发。需要视频的使用者应从对应数据集官方渠道申请和下载，并自行确认使用与再分发权限。
 
 ## LeRobot 样例与隐私
 
@@ -158,3 +204,7 @@ MINT 的实现离不开以下研究项目、模型与数据集。
 ## 许可证
 
 wuji-ego-mint 原创代码使用 MIT License。上游模型、数据集、MANO 资产、内置的 LingBot-Map 源文件及可选研究后端仍遵循各自许可证。发布前请阅读 [第三方声明](THIRD_PARTY_NOTICES.md)。
+
+## 联系方式
+
+如果您在安装、数据生成、模型训练、推理或 Viewer 使用过程中遇到任何问题，欢迎直接联系我。微信：`z3132544408`。
