@@ -10,7 +10,7 @@ The viewer is the original `eval/model_effect` interactive interface. It starts
 at `data/samples/lerobot_v3` and supports the bundled dataset's
 ground-truth/prediction 2D and 3D comparison workflow. Model loading and
 inference are separate explicit actions. The default model configuration is
-`configs/training/stage2_resume_worldengine_camera_only.yaml`.
+`configs/training/mint_step2.yaml`.
 
 Pass a path only when overriding a default, for example:
 
@@ -57,14 +57,8 @@ process can cost more than one short inference. Use `--compile-mode auto`,
 `--fp8-mode auto`, and `--warmup-passes 2` only for repeated or sufficiently
 large headless workloads.
 
-## Network safety
+## Browser startup
 
-The default port is 8011. If remote access is needed, prefer an SSH
-port forward:
-
-```bash
-ssh -L 8011:127.0.0.1:8011 user@remote-host
-```
-
-Exposing `--host 0.0.0.0` requires authentication and TLS at a reverse proxy.
-The built-in development server is not a public production server.
+The Viewer automatically attempts to open its URL in the default browser after
+startup. Pass `--no-open` when browser launch is not desired. The built-in
+development server is not a public production server.

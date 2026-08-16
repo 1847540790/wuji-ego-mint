@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-MINT 是一个面向第一视角视频的数据处理、相机与手部模型训练、推理、模型效果可视化和 benchmark 工具包。项目将 Ray 数据管线与训练代码统一封装为稳定、可复现的命令行接口，便于研究者从零安装并快速验证。
+MINT 是一个面向第一视角相机与手部模型推理、训练、效果可视化和 benchmark 的开源工具包。公开仓库同时提供可复用的 Ray 调度、数据流、轨迹清理和 LeRobot 导出组件，但不是生产级数据生成管线的完整可分发副本。
 
 公开 Git 仓库包含一个小于 20 MB 的 Hot3D LeRobot v3 样例和 benchmark 实现，但不包含完整数据集、模型权重、MANO 资产、访问凭证或私有基础设施配置。公开 MINT 模型托管于 Hugging Face 和 ModelScope，由下载脚本保存到本地忽略目录。Benchmark 所需数据、依赖和本地或云端运行环境由使用者自行准备。
 
@@ -22,7 +22,7 @@ python -m mint doctor --profile inference
 python -m mint viewer
 ```
 
-打开 `http://127.0.0.1:8011`，然后依次操作：
+Viewer 启动后会自动在默认浏览器打开 `http://127.0.0.1:8011`，然后依次操作：
 
 1. 在 **模型与样本** 中保留 `checkpoints/model.safetensors`，或者选择其他兼容 checkpoint。
 2. 点击 **加载模型**，等待模型状态变为就绪。
@@ -32,17 +32,11 @@ python -m mint viewer
 
 ![MINT Web Viewer 加载模型并完成推理后的界面](data/samples/mint-web-viewer.png)
 
-远程服务器可先转发 Viewer 端口，再打开同一地址：
-
-```bash
-ssh -L 8011:127.0.0.1:8011 user@server
-```
-
 ## 功能范围
 
 | 模块 | 命令 | 用途 |
 | --- | --- | --- |
-| 数据处理 | `python -m mint pipeline` | 使用 Ray 将视频转换为可训练的 LeRobot v3 数据集。 |
+| 管线参考 | `ray_pipeline/` | 在用户本地整合所需上游后端后，复用已开源的 Ray 调度、接口、轨迹清理和 LeRobot 导出代码。 |
 | 模型训练 | `python -m mint train` | 使用 Accelerate/DDP 训练相机与手部 MINT 模型。 |
 | 推理与可视化 | `python -m mint viewer` | 使用原版 model_effect Web 界面查看 LeRobot GT、模型预测、2D/3D 轨迹与逐帧指标。 |
 | 模型评测 | `python eval/model_effect/benchmark/run.py` | 运行开源 benchmark CLI；数据集和运行环境由使用者配置。 |
@@ -60,7 +54,7 @@ Viewer 默认读取以下项目路径：
 
 - 样例：`data/samples/lerobot_v3/`
 - 模型：`output/model_train/` 中可发现的训练 checkpoint，或命令行 `--ckpt`
-- 配置：`configs/training/stage2_resume_worldengine_camera_only.yaml`
+- 配置：`configs/training/mint_step2.yaml`
 - 缓存：系统临时目录下的 `wuji-viewer-cache/`，或命令行 `--cache-dir`
 
 浏览器打开 `http://127.0.0.1:8011`。Viewer 会展示 LeRobot 的 GT，并在显式点击“加载模型”和“开始推理”后生成 GT/Pred 2D overlay、固定世界/当前相机 3D、逐帧数值和 loss。服务默认监听 `0.0.0.0`；远程使用时建议通过 SSH 转发或带认证的反向代理访问。
@@ -84,9 +78,9 @@ python -m mint infer \
   --output artifacts/example
 ```
 
-## 数据处理与训练
+## 模型训练与可选管线复现
 
-数据处理和训练需要完整环境：
+模型训练或本地数据管线开发需要完整环境：
 
 ```bash
 bash scripts/create_env.sh full
@@ -94,43 +88,27 @@ conda activate mint
 python -m mint doctor --profile full
 ```
 
-GeoCalib、MoGe、Mega-SAM 源码随项目放在 `third_party/`。当前机器的 HaWoR
-适配源码也位于该目录，但受 CC BY-NC-ND 限制而保持 Git 忽略；公开或商业分发需另行授权。
-所有权重和 MANO 等单独授权资产均不随仓库发布。先阅读 `THIRD_PARTY_NOTICES.md`，再注册本地源码并检查数据管线：
+公开版本推荐直接使用 Viewer 或 `mint infer` 进行 MINT 模型推理并导出结果。本仓库不提供从任意原始视频到生产版 LeRobot 训练数据的开箱即用流程。
 
-```bash
-bash scripts/install_data_backends.sh
-python -m mint doctor --profile data
-```
+GeoCalib、MoGe 和 Mega-SAM 的源码快照位于 `third_party/`，但生产管线使用的部分第三方适配代码受上游许可证限制，无法公开。其中，当前机器上修改过的 HaWoR 源码因 CC BY-NC-ND 禁止分发修改版而保持 Git 忽略。所有权重、MANO 文件和其他需单独授权的资产也不随仓库发布。
 
-### 使用 Ray 处理已审核视频
-
-```bash
-python -m mint pipeline \
-  --input data/samples \
-  --output output/processed \
-  --num-gpus 1
-```
-
-完整管线需要较多 GPU 资源。长任务开始前请运行 `python -m mint doctor --profile data`，并先使用一段短且不含敏感信息的视频验证流程。
-
-`mint pipeline` 使用 Ray 调度研究后端，将原始视频转换为可供训练使用的 LeRobot v3 数据；它不会启动 Viewer，也不负责模型推理展示。
+如果确实需要复现数据生成管线，请先阅读 `THIRD_PARTY_NOTICES.md`，按各自许可条款自行获取和安装所有上游库与资产，再在本地补充必要的兼容适配。`ray_pipeline/` 已开源的代码可作为调度、接口、数据流、轨迹清理、Manifest 和 LeRobot 导出协议的实现参考。可使用 AI 编程工具帮助理解上游 API 差异并完成兼容层，但整合结果及其许可合规性由使用者负责。只有在完成这些本地整合后，才应将 `python -m mint doctor --profile data` 和 `python -m mint pipeline` 视为可用入口。
 
 ### 训练模型
 
 训练配置只保留与两个指定 checkpoint 对应的两阶段配置。`step_00019000` 是 Stage 1，`step_00004500` 是从 Stage 1 权重初始化、仅训练 WorldEngine 相机头的 Stage 2：
 
 ```bash
-python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml --inspect
-python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml
+python -m mint train --config configs/training/mint_step1.yaml --inspect
+python -m mint train --config configs/training/mint_step1.yaml
 
-python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml --inspect
-python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml
+python -m mint train --config configs/training/mint_step2.yaml --inspect
+python -m mint train --config configs/training/mint_step2.yaml
 ```
 
 Stage 2 配置中的 `train.init_from` 已指向 Stage 1 的 `step_00019000/model.safetensors`。`--inspect` 不读取数据集，仅构建模型并输出结构，建议将它作为训练配置的第一项检查。
 
-`mint train` 消费数据管线生成的数据集并产出训练 checkpoint；它同样不需要 Viewer。训练完成后，如需交互检查新模型，再使用 `python -m mint viewer --ckpt /path/to/checkpoint`。
+`mint train` 消费由使用者单独准备的兼容 LeRobot 数据集并产出训练 checkpoint；它同样不需要 Viewer。训练完成后，如需交互检查新模型，再使用 `python -m mint viewer --ckpt /path/to/checkpoint`。
 
 ## LeRobot 样例与隐私
 
@@ -155,7 +133,7 @@ python scripts/build_sample_lerobot.py \
 ```bash
 python eval/model_effect/benchmark/run.py \
   --ckpt /path/to/checkpoint \
-  --config configs/training/stage2_resume_worldengine_camera_only.yaml \
+  --config configs/training/mint_step2.yaml \
   --data-root /path/to/benchmark-data
 ```
 
@@ -190,7 +168,7 @@ mint/
 
 ## 数据管线复现说明
 
-用于产出第一视角训练数据的生产管线涉及众多第三方依赖，并需要持续适配上游接口变动。受部分第三方依赖库许可证限制，我们无法直接开源生产过程中修改或适配后的全部第三方源码，因此本仓库不包含完整生产环境中的每一处内部改动。如需复现完整数据管线，建议先按照各自许可证安装对应第三方库的原始版本，再以本仓库已经开源的数据管线编排、接口和数据流代码为实现参考；也可以借助 AI 编程工具理解上游接口差异并补齐所需的兼容层。
+公开版本提供的是实现参考，而不是生产数据生成器的一键复现。请直接使用 MINT 进行模型推理；如需复现数据管线，请自行准备已授权的上游源码和资产，并按[数据管线文档](docs/data-pipeline.md)完成本地整合。
 
 ## 致谢
 

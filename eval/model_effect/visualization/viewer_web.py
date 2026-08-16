@@ -23,7 +23,7 @@ lerobot 数据集目录 → 出 episode 选择器（有 GT/loss）；进入普�
   $PY eval/model_effect/visualization/viewer_web.py \
       --input /path/to/input --ckpt <step_* 目录> [--host 0.0.0.0 --port 8011]
   # 裸视频项的默认抽帧/坐标系（lerobot 项忽略，读各自 info.json）：[--hand_frame camera --fps 30]
-然后浏览器打开打印出的 URL（远端跑可 ssh -L 8011:localhost:8011 <server> 后访问）。
+启动后默认自动打开浏览器；使用 --no-open 可关闭这一行为。
 """
 from __future__ import annotations
 
@@ -101,15 +101,15 @@ def main() -> int:
     p.add_argument("--jobs", "-j", type=int, default=2,
                    help="批量视频的并发渲染/写盘数，也用于 --prerender（默认 2；GPU 推理会与这些任务流水并发）")
     p.add_argument("--no-open", dest="open_browser", action="store_false",
-                   help="启动后不自动弹出浏览器（默认弹出；远端 headless 弹不出也无妨）")
+                   help="启动后不自动弹出浏览器（默认自动打开）")
     args = p.parse_args()
 
     # config 模板优先级：命令行 --config > 该模型适配器默认（default_config）。二者皆无（如 vggt 占位）
     # 则为 None，后续 ckpts 调用安全降级，模型真正构建时由适配器抛清晰的「需 --config」错误。
     cfg_tmpl = args.config or default_config(args.model)
 
-    # 启动前自愈端口：固定端口、强制腾出——占用者不管是不是本脚本一律杀掉，始终复用该端口，
-    # 让 ssh -L 隧道不因端口漂移而连不上；实在杀不掉才退回换端口。
+    # 启动前自愈端口：固定端口、强制腾出——占用者不管是不是本脚本一律杀掉，始终复用该端口；
+    # 实在杀不掉才退回换端口。
     # 重活（MANO、模型）挪到 app.run 之后的后台线程；数据集/视频均**不预扫描**，浏览到才登记。
     args.port = netutil.ensure_port(args.port)
 
@@ -160,7 +160,6 @@ def main() -> int:
     print(f"[info] 浏览根: {root}")
     print(f"[info] overlay/预测 缓存目录: {cache_dir}")
     print(f"[info] 打开浏览器访问:  http://localhost:{args.port}/")
-    print(f"[info] 远端运行: 本机 ssh -L {args.port}:localhost:{args.port} <server> 后访问上面地址")
     print("[info] 网页已可访问；4.6G 模型"
           + ("已按 --preload 启动即后台预载。" if args.preload
              else "默认不加载——在网页选模型后手动点 [⬇ 加载模型] 载入；加载与推理已拆开，加载中不可推理。"))

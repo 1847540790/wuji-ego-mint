@@ -1,7 +1,9 @@
 # Bundled research backends
 
-MINT keeps the source required by its data pipeline under this directory. The
-current working-tree snapshot was imported from `wuji-data-infra` at revision
+MINT keeps the redistributable upstream source snapshots used by its internal
+data pipeline under this directory. This is not every adaptation required to
+recreate the production pipeline. The current working-tree snapshot was
+imported from `wuji-data-infra` at revision
 `f198a1ed08b508f7bef7de70ae20b5fe29122997` on 2026-08-16. Upstream copyright,
 license, and notice files are retained inside each component.
 

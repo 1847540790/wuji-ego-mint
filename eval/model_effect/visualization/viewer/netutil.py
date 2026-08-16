@@ -96,8 +96,7 @@ def cmd_of(pid: int) -> str:
 def ensure_port(port: int) -> int:
     """启动前自愈端口：固定端口、每次强制腾出。空闲直接用；被占用则不管是不是本脚本，
     一律 SIGTERM→（等不掉再）SIGKILL 把占该端口的 LISTEN 进程清掉，始终复用请求端口；
-    只有实在杀不掉（如权限不足/杀不动的系统进程）才退回自动改用下一个空闲端口。
-    固定端口是为了让 ssh -L <port>:localhost:<port> 隧道始终有效，不因漂移而连不上。"""
+    只有实在杀不掉（如权限不足/杀不动的系统进程）才退回自动改用下一个空闲端口。"""
     import signal
     import time as _t
     if port_free(port):

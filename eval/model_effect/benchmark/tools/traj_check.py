@@ -33,7 +33,7 @@ def main():
     ap.add_argument("--input", nargs="+", required=True, help="HOT3D 序列名,如 P0001_10a27bf7")
     ap.add_argument("--dataset", default="hot3d")
     ap.add_argument("--config", default=str(
-        _REPO / "configs" / "training" / "stage2_resume_worldengine_camera_only.yaml"))
+        _REPO / "configs" / "training" / "mint_step2.yaml"))
     ap.add_argument("--ckpt", default=None, help="不给=用 config 里的预训练骨干(骨干+相机头本就冻结)")
     ap.add_argument("--data-root", default=str(_REPO / "data" / "benchmark"))
     ap.add_argument("--max-frames", type=int, default=512)

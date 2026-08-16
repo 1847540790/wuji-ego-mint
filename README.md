@@ -2,9 +2,11 @@
 
 [中文说明](README_ZH.md)
 
-MINT is an open toolkit for egocentric video processing, camera-and-hand model
-training, model-effect visualization, and benchmarking. It packages the Ray data
-pipeline and training stack behind a small, reproducible command surface.
+MINT is an open toolkit for egocentric camera-and-hand inference, model
+training, model-effect visualization, and benchmarking. The public repository
+also exposes reusable Ray orchestration, data-flow, cleaning, and LeRobot export
+components, but it is not a complete redistributable copy of the production
+data-generation pipeline.
 
 The public Git repository includes a sub-20 MB Hot3D LeRobot v3 sample
 and the benchmark implementation. It excludes full datasets, model checkpoints,
@@ -33,7 +35,7 @@ python -m mint doctor --profile inference
 python -m mint viewer
 ```
 
-Open `http://127.0.0.1:8011`, then:
+The Viewer automatically opens `http://127.0.0.1:8011` in the default browser. Then:
 
 1. In **Model and Sample**, keep `checkpoints/model.safetensors` or select another compatible checkpoint.
 2. Click **Load Model** and wait until the model status is ready.
@@ -43,17 +45,11 @@ Open `http://127.0.0.1:8011`, then:
 
 ![MINT Web Viewer after loading the model and running inference](data/samples/mint-web-viewer.png)
 
-For a remote server, forward the Viewer port before opening the same URL:
-
-```bash
-ssh -L 8011:127.0.0.1:8011 user@server
-```
-
 ## What is included
 
 | Area | Entry point | Purpose |
 | --- | --- | --- |
-| Data | `python -m mint pipeline` | Process videos into training-ready LeRobot v3 datasets with Ray. |
+| Pipeline reference | `ray_pipeline/` | Reuse the open Ray orchestration, interfaces, cleaning, and LeRobot export code after integrating the required upstream backends locally. |
 | Train | `python -m mint train` | Train the camera-and-hand MINT model with Accelerate/DDP. |
 | Infer and view | `python -m mint viewer` | Use the original model_effect web UI for LeRobot GT, predictions, 2D/3D trajectories, and frame metrics. |
 | Benchmark | `python eval/model_effect/benchmark/run.py` | Run the open benchmark CLI with user-provided data and environment. |
@@ -84,7 +80,7 @@ The viewer uses these project paths by default:
 
 - sample: `data/samples/lerobot_v3/`;
 - model: a training checkpoint discovered under `output/model_train/`, or `--ckpt`;
-- configuration: `configs/training/stage2_resume_worldengine_camera_only.yaml`;
+- configuration: `configs/training/mint_step2.yaml`;
 - cache: `wuji-viewer-cache/` under the system temporary directory, or `--cache-dir`.
 
 Open `http://127.0.0.1:8011`. The viewer displays LeRobot GT and, after the
@@ -117,9 +113,9 @@ python -m mint infer \
   --output artifacts/example
 ```
 
-## Data processing and training
+## Training and optional pipeline reconstruction
 
-Data processing and training require the full environment:
+Training or local pipeline-development work requires the full environment:
 
 ```bash
 bash scripts/create_env.sh full
@@ -127,51 +123,46 @@ conda activate mint
 python -m mint doctor --profile full
 ```
 
-GeoCalib, MoGe, and Mega-SAM source is bundled under `third_party/`. The adapted
-HaWoR infra copy is available locally but remains Git-ignored because its
-CC BY-NC-ND terms prohibit redistribution of modifications. Weights, MANO, and
-other separately licensed assets are not bundled. Review `THIRD_PARTY_NOTICES.md`,
-register the local source, and verify the data profile:
+The recommended public workflow is to use the Viewer or `mint infer` directly
+for MINT inference and artifact export. The repository does not provide a
+turnkey path from arbitrary raw videos to the production LeRobot training data.
 
-```bash
-bash scripts/install_data_backends.sh
-python -m mint doctor --profile data
-```
+GeoCalib, MoGe, and Mega-SAM source snapshots are distributed under
+`third_party/`, but some production adaptations cannot be published under their
+upstream license terms. In particular, the locally adapted HaWoR source is
+Git-ignored because CC BY-NC-ND prohibits redistribution of modifications.
+Weights, MANO files, and other separately licensed assets are also excluded.
 
-### Process approved videos with Ray
-
-```bash
-python -m mint pipeline \
-  --input data/samples \
-  --output output/processed \
-  --num-gpus 1
-```
-
-Run `python -m mint doctor --profile data` before a long job and begin with one short,
-non-sensitive clip.
-
-`mint pipeline` uses Ray to turn source videos into training-ready LeRobot v3
-data. It does not start the viewer or display model predictions.
+If you need to reconstruct the data-generation pipeline, first read
+`THIRD_PARTY_NOTICES.md`, obtain and install every required upstream library and
+asset under its own terms, and implement the necessary compatibility adapters
+locally. The open code in `ray_pipeline/` documents the orchestration,
+interfaces, data flow, cleaning, manifests, and LeRobot export contracts. An AI
+coding assistant may help reconcile upstream API differences, but the resulting
+integration remains the user's responsibility and must comply with all licenses.
+Only after completing that local integration should the data-profile doctor and
+`python -m mint pipeline` be treated as usable entry points.
 
 ### Train
 
 Only the two configurations associated with the selected checkpoints are kept. `step_00019000` is Stage 1; `step_00004500` is the Stage 2 WorldEngine camera-only adaptation initialized from Stage 1:
 
 ```bash
-python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml --inspect
-python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml
+python -m mint train --config configs/training/mint_step1.yaml --inspect
+python -m mint train --config configs/training/mint_step1.yaml
 
-python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml --inspect
-python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml
+python -m mint train --config configs/training/mint_step2.yaml --inspect
+python -m mint train --config configs/training/mint_step2.yaml
 ```
 
 The Stage 2 `train.init_from` points to the Stage 1
 `step_00019000/model.safetensors`. `--inspect` constructs the model without
 loading a dataset and is the recommended first configuration check.
 
-`mint train` consumes the processed dataset and writes training checkpoints;
-it does not require the viewer. To inspect a trained model interactively, run
-`python -m mint viewer --ckpt /path/to/checkpoint` afterward.
+`mint train` consumes a compatible, separately prepared LeRobot dataset and
+writes training checkpoints; it does not require the viewer. To inspect a
+trained model interactively, launch the viewer afterward with
+`--ckpt /path/to/checkpoint`.
 
 ## LeRobot sample
 
@@ -208,7 +199,7 @@ used by MINT are available in `eval/model_effect/benchmark/` for inspection.
 ```bash
 python eval/model_effect/benchmark/run.py \
   --ckpt /path/to/checkpoint \
-  --config configs/training/stage2_resume_worldengine_camera_only.yaml \
+  --config configs/training/mint_step2.yaml \
   --data-root /path/to/benchmark-data
 ```
 
@@ -246,15 +237,10 @@ mint/
 
 ## Data-pipeline reproducibility
 
-The production pipeline used to generate egocentric training data spans many
-third-party dependencies and has had to track substantial upstream API changes.
-Some adapted third-party source files cannot be redistributed directly because
-of their licenses, so this repository does not contain every internal
-modification used in production. To reproduce the full pipeline, install the
-corresponding original upstream libraries under their own license terms, then
-use the open pipeline orchestration, interfaces, and data-flow code in this
-repository as the implementation reference. AI-assisted coding tools can help
-map upstream API differences and reconstruct the required compatibility layer.
+The public release provides an implementation reference, not a one-command
+reproduction of the production data generator. Use MINT directly for inference;
+for pipeline reconstruction, supply the licensed upstream code and assets and
+complete the local integration described in [Data pipeline](docs/data-pipeline.md).
 
 ## Acknowledgements
 

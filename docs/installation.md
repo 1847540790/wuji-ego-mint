@@ -133,20 +133,24 @@ automatically checks the HaWoR locations when `assets/mano/` is absent.
 
 ## Data backends
 
-GeoCalib, MoGe, and Mega-SAM source is already available under `third_party/`.
-An authorized HaWoR checkout must also be present at `third_party/HaWoR`; the
-MINT-adapted infra copy is not part of source releases because HaWoR prohibits
-redistribution of modifications. Run the installer to acknowledge the
-restrictions and register the local GeoCalib/MoGe packages after reviewing
-`THIRD_PARTY_NOTICES.md`:
+GeoCalib, MoGe, and Mega-SAM source snapshots are available under
+`third_party/`, but they do not make the production data pipeline turnkey. An
+authorized HaWoR checkout and any required compatibility adaptations must be
+supplied locally at `third_party/HaWoR`; the MINT-adapted infra copy is not part
+of source releases because HaWoR prohibits redistribution of modifications.
+
+After reviewing `THIRD_PARTY_NOTICES.md` and completing the local integration,
+the installer can acknowledge the restrictions and register the source already
+present on that machine:
 
 ```bash
 bash scripts/install_data_backends.sh
 python -m mint doctor --profile data --strict
 ```
 
-The installer does not download model weights or MANO. Some native CUDA
-extensions used by the full processing chain must be compiled
+The installer neither downloads missing source nor recreates MINT's internal
+third-party adaptations. It also does not download model weights or MANO. Some
+native CUDA extensions used by the full processing chain must be compiled
 for the installed PyTorch and GPU architecture. Do not copy extensions from a
 different Conda environment: extension ABI mismatches can produce silent
 errors or crashes.

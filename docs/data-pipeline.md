@@ -1,47 +1,72 @@
-# Data pipeline
+# Data pipeline reconstruction reference
 
-The data pipeline converts short egocentric videos into camera and hand
-trajectories and exports LeRobot v3 datasets. It uses Ray for GPU-aware
-scheduling and resumable manifests.
+The public MINT release does not include a turnkey copy of the production data
+generator. It publishes the repository-owned Ray orchestration, backend
+interfaces, trajectory cleaning, manifests, and LeRobot v3 export code as an
+implementation reference. Some adapted third-party code cannot be redistributed
+under its upstream license, and all model weights and separately licensed assets
+are excluded.
 
-## Preflight
+For the supported public workflow, use the Viewer or `mint infer` to run MINT
+inference and export prediction artifacts. Reconstruct the raw-video-to-LeRobot
+pipeline only when that production capability is specifically required.
+
+## Local reconstruction requirements
+
+Before attempting a local integration:
+
+1. Read `THIRD_PARTY_NOTICES.md` and verify that the intended use is permitted.
+2. Obtain the required upstream libraries, including GeoCalib, MoGe, Mega-SAM,
+   and HaWoR, under their original license terms.
+3. Obtain the required checkpoints, MANO files, and other licensed assets from
+   their official sources.
+4. Reconcile the upstream APIs with the contracts in `ray_pipeline/` and keep
+   any non-redistributable adaptations local. An AI coding assistant may be used
+   to help implement this compatibility layer.
+5. Validate the completed local environment before processing any data.
+
+The source snapshots under `third_party/` and
+`scripts/install_data_backends.sh` do not by themselves recreate the internal
+production environment.
+
+## Conditional local entry point
+
+After every required backend and compatibility adapter has been supplied
+locally, validate the integration:
 
 ```bash
 conda activate mint
 python -m mint doctor --profile data --strict
 ```
 
-Start with one approved clip and one GPU. Verify disk capacity for intermediate
-frames, model predictions, and final Parquet/video output.
-
-## Run
+Only after that check passes should the local pipeline entry point be used:
 
 ```bash
 python -m mint pipeline \
-  --input data/samples/epic-kitchens-01.mp4 \
+  --input /path/to/approved-video.mp4 \
   --output output/processed \
   --num-gpus 1
 ```
 
-The underlying entry point also accepts a directory or a text file containing
-one video path per line. Use only paths the current operator is authorized to
-process.
+This command is an integration entry point, not a guarantee that a fresh public
+checkout can reproduce the production output. Start with one short,
+non-sensitive video and verify intermediate trajectories, final Parquet/video
+alignment, and available disk space before scheduling a long Ray job.
 
-## Resume
-
-The pipeline writes a manifest under its timestamped output directory. Resume
-the same output rather than copying partial files:
+If the local integration supports manifests, resume the same output instead of
+copying partial files:
 
 ```bash
-python -m mint pipeline --input data/samples --resume output/processed/<run-directory>
+python -m mint pipeline --input /path/to/input --resume output/processed/<run-directory>
 ```
 
 Use `--retry-failed` only after addressing the recorded error. Retrying a
-missing model asset without fixing it creates noisy duplicate failures.
+missing backend, adapter, or model asset without fixing it creates noisy
+duplicate failures.
 
 ## Output contract
 
-The public contract consists of:
+The open output contract consists of:
 
 - per-video prediction and cleaned trajectory files;
 - sidecar metadata that uses paths relative to the run root;

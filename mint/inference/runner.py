@@ -21,7 +21,7 @@ def inference_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", default="artifacts/inference", help="Output directory")
     parser.add_argument("--checkpoint", required=True, help="Checkpoint file or Accelerate checkpoint directory")
     parser.add_argument(
-        "--config", default="configs/training/stage2_resume_worldengine_camera_only.yaml"
+        "--config", default="configs/training/mint_step2.yaml"
     )
     parser.add_argument("--devices", default="auto", help="auto, cpu, a CUDA device, or a comma-separated list")
     parser.add_argument("--max-frames", type=int, default=160)

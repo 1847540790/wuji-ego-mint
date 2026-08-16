@@ -39,7 +39,7 @@ def main():
     ap.add_argument("--ckpt", default=None,
                     help="accelerate save_state 目录(output/model_train/<ts>/step_*)或权重文件;不给则 smoke")
     ap.add_argument("--config", default=str(
-        _REPO / "configs" / "training" / "stage2_resume_worldengine_camera_only.yaml"),
+        _REPO / "configs" / "training" / "mint_step2.yaml"),
                     help="模型结构 + size_hw(窗口=训练 clip_len,predictor 自动推断)")
     ap.add_argument("--data-root", default=str(_REPO / "data" / "benchmark"))
     ap.add_argument("--heads", default="all", help=f"逗号分隔或 all;可选 {all_heads}")

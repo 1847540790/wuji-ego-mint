@@ -1,4 +1,4 @@
-# Stage 1 configuration used by the 2026-08-08 H20 run at step 19000.
+# MINT Step 1 configuration used by the 2026-08-08 H20 run at step 19000.
 # Source run: NVIDIA_H20/20260808_193031/lingbotmap_distill_axis_angle_refine
 model:
   name: split_fov_head

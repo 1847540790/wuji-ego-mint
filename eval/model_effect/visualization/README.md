@@ -87,7 +87,6 @@ $PY eval/model_effect/visualization/hand_reproj.py \
 ```bash
 $PY eval/model_effect/visualization/viewer_web.py \
     --input <lerobot_v3 目录> --ckpt <训练 step_* 目录> --port 8000
-# 远端：本机 ssh -L 8000:localhost:8000 <server> 后浏览器开 http://localhost:8000/
 ```
 - 点击「加载模型」时默认使用**当前进程可见的全部 GPU**，在每张卡常驻一个相同模型副本；
   `chunked` 推理把独立窗口并发分给这些卡，输出回 CPU 后仍按原顺序做相机拼接和手部融合，不改变评估口径。

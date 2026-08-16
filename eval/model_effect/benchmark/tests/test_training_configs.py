@@ -5,8 +5,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 TRAINING_CONFIG_DIR = REPO_ROOT / "configs" / "training"
-STAGE1_NAME = "stage1_lingbotmap_distill_axis_angle_refine.yaml"
-STAGE2_NAME = "stage2_resume_worldengine_camera_only.yaml"
+STAGE1_NAME = "mint_step1.yaml"
+STAGE2_NAME = "mint_step2.yaml"
 
 
 def _load(name: str) -> dict:

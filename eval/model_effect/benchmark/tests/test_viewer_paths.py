@@ -30,7 +30,7 @@ def test_viewer_defaults_to_ukf_smoothing():
 
 
 def test_viewer_defaults_to_stage2_checkpoint_config():
-    assert DEFAULT_CONFIG.name == "stage2_resume_worldengine_camera_only.yaml"
+    assert DEFAULT_CONFIG.name == "mint_step2.yaml"
 
 
 def test_viewer_enters_directly_nested_lerobot_dataset(tmp_path):

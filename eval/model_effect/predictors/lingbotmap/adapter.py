@@ -14,7 +14,7 @@ from inference.registry import register_predictor
 # lingbotmap -> predictors -> model_effect -> eval -> <repo>
 REPO_DIR = Path(__file__).resolve().parents[4]
 DEFAULT_CONFIG = (
-    REPO_DIR / "configs" / "training" / "stage2_resume_worldengine_camera_only.yaml"
+    REPO_DIR / "configs" / "training" / "mint_step2.yaml"
 )
 
 

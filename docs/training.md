@@ -17,8 +17,8 @@ alignment, and clip construction used by these recipes.
 ## Inspect first
 
 ```bash
-python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml --inspect
-python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml --inspect
+python -m mint train --config configs/training/mint_step1.yaml --inspect
+python -m mint train --config configs/training/mint_step2.yaml --inspect
 ```
 
 Inspection builds the model on CPU, prints the module and freeze structure, and
@@ -28,8 +28,8 @@ configuration errors without allocating training GPUs.
 ## Train
 
 ```bash
-python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml
-python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml
+python -m mint train --config configs/training/mint_step1.yaml
+python -m mint train --config configs/training/mint_step2.yaml
 ```
 
 Stage 1 reproduces the H20 `step_00019000` run. Stage 2 initializes from that

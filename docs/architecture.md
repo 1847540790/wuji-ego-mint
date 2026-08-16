@@ -1,12 +1,13 @@
 # Architecture
 
-MINT keeps the research pipeline modular while presenting one stable CLI.
+MINT keeps inference and training modular and exposes the redistributable parts
+of the research data pipeline as an implementation reference.
 
 ```text
 Approved videos
       |
       v
-Ray data pipeline -----> LeRobot v3 dataset
+Locally integrated Ray pipeline -----> LeRobot v3 dataset
       |                         |
       |                         v
 Optional research backends   Training engine -----> Checkpoint
@@ -22,17 +23,20 @@ Optional research backends   Training engine -----> Checkpoint
 
 ### Data plane
 
-`ray_pipeline/` owns scheduling, actors, resumable manifests, monitoring, and
-LeRobot export. Its `backends/` package provides adapters for optional upstream
-research models. Its `data_cleaning/` package contains trajectory filters used
-before export.
+`ray_pipeline/` contains the repository-owned scheduling, actors, resumable
+manifests, monitoring, and LeRobot export code. Its `backends/` package defines
+interfaces for optional upstream research models, and its `data_cleaning/`
+package contains trajectory filters used before export. A public checkout is
+not a complete production data generator until the user supplies and integrates
+the required upstream backends locally.
 
 Redistributable backend source snapshots live under `third_party/`, together
-with their upstream licenses and provenance manifest. Model weights, MANO
-files, generated extensions, and upstream Git histories remain outside the
-MINT source release. The MINT-adapted HaWoR infra copy is also stored at the
-expected local path but remains Git-ignored because CC BY-NC-ND 4.0 restricts
-commercial use and prohibits redistribution of modifications.
+with their upstream licenses and provenance manifest. They are not sufficient
+to recreate every production adaptation. Model weights, MANO files, generated
+extensions, and upstream Git histories remain outside the MINT source release.
+The MINT-adapted HaWoR infra copy exists only on the development machine and is
+Git-ignored because CC BY-NC-ND 4.0 restricts commercial use and prohibits
+redistribution of modifications.
 
 ### Training plane
 

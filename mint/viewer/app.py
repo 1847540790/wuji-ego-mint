@@ -27,7 +27,7 @@ DEFAULT_SAMPLES_DIR = PROJECT_DIR / "data" / "samples"
 DEFAULT_ARTIFACTS_DIR = PROJECT_DIR / "artifacts" / "viewer"
 DEFAULT_CHECKPOINT = PROJECT_DIR / "checkpoints" / "model.safetensors"
 DEFAULT_CONFIG = (
-    PROJECT_DIR / "configs" / "training" / "stage2_resume_worldengine_camera_only.yaml"
+    PROJECT_DIR / "configs" / "training" / "mint_step2.yaml"
 )
 
 

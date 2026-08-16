@@ -1,7 +1,7 @@
 samples: data/samples
 artifacts: artifacts/viewer
 model:
-  config: configs/training/stage2_resume_worldengine_camera_only.yaml
+  config: configs/training/mint_step2.yaml
   checkpoint: checkpoints/model.safetensors
   devices: auto
 inference:

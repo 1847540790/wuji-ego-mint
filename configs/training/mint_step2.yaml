@@ -1,4 +1,4 @@
-# Stage 2 configuration used by the 2026-08-10 A800 run at step 4500.
+# MINT Step 2 configuration used by the 2026-08-10 A800 run at step 4500.
 # Source run: NVIDIA_A800-SXM4-80GB/20260810_161322/volcano_stage2_resume_worldengine_camera_only
 model:
   name: split_fov_head

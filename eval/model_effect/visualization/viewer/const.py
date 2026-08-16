@@ -9,7 +9,7 @@ from pathlib import Path
 VIS_DIR = Path(__file__).resolve().parents[1]               # viewer -> visualization
 REPO_DIR = VIS_DIR.parents[2]                               # visualization -> model_effect -> eval -> <repo>
 DEFAULT_CONFIG = (REPO_DIR / "configs" / "training"
-                  / "stage2_resume_worldengine_camera_only.yaml")
+                  / "mint_step2.yaml")
 MODEL_TRAIN_ROOT = REPO_DIR / "output" / "model_train"      # 各训练 run（<run_ts>/step_*）根目录
 DEFAULT_CHECKPOINT = REPO_DIR / "checkpoints" / "model.safetensors"
 DEFAULT_CHECKPOINT_RUN = "checkpoints"
