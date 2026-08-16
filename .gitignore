@@ -37,6 +37,11 @@ weights/
 assets/mano/
 assets/models/
 assets/robot_hand/
+# The redistributable Wuji retargeting runtime and robot meshes are source assets.
+!eval/simulate/wuji-retargeting/
+!eval/simulate/wuji-retargeting/**
+eval/simulate/wuji-retargeting/**/__pycache__/
+eval/simulate/wuji-retargeting/**/*.py[cod]
 # The local infra copy contains MINT-specific changes, while HaWoR is ND-licensed.
 # Keep it available for authorized internal use but out of source distributions.
 third_party/HaWoR/

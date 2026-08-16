@@ -92,8 +92,9 @@ assets/models/lingbot-map.pt
 
 Obtain it from the official LingBot-Map release and review its model terms.
 The public asset helper does not download this optional backbone. It downloads
-only the student checkpoint and the redistributable robot description bundle.
-Every file is checksum-verified before it replaces the destination:
+only the public MINT checkpoint. It does not download URDF, STL, MANO, or other
+robot-description assets. The checkpoint is checksum-verified before it
+replaces the destination:
 
 ```bash
 bash scripts/download_assets.sh

@@ -44,3 +44,21 @@ def test_viewer_serves_i18n_script():
     assert response.status_code == 200
     assert response.mimetype == "application/javascript"
     assert b"window.ViewerI18n" in response.data
+
+
+def test_benchmark_supports_multi_table_jpg_export():
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    source = (WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    export_keys = re.findall(r'data-bench-table-export="([^"]+)"', html)
+    assert export_keys == [
+        "hot3d-camera",
+        "arctic-camera",
+        "vidihand-arctic",
+        "vidihand-hot3d",
+    ]
+    assert 'id="bfTableExportSeparate"' in html
+    assert 'id="bfTableExportCombined"' in html
+    assert "function benchRenderTableExport" in source
+    assert "async function exportBenchTablesAsJpg(combined)" in source
+    assert "'image/jpeg',0.95" in source

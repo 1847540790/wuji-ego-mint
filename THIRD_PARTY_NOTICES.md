@@ -12,6 +12,7 @@ are not relicensed under MINT's MIT license.
 | HaWoR | `ThunderVVV/HaWoR` | CC BY-NC-ND 4.0; non-commercial and no redistributed modifications | No; modified infra copy is local and Git-ignored |
 | MANO | Official MANO website | Separate registration and license agreement | No |
 | PyTorch3D | `facebookresearch/pytorch3d` | BSD-3-Clause | No |
+| Wuji retargeting and hand description | WujiHand Technologies / Wuji Technology | MIT; retain both bundled license files | Runtime code, YAML configs, URDF, MJCF, and STL meshes |
 
 The data preparation workflow may be used with Ego4D, EPIC-KITCHENS, or EgoDex
 only under the terms accepted by the person who obtained the data. Dataset

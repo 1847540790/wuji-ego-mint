@@ -97,6 +97,7 @@ let state = { eid:0, fps:30, mode:'mesh_skel', nframes:1,
                      backend:'local', job:null, job_id:null, job_status:null, aliyun:null, aliyunDefaultsLoaded:false,
                      suite:'sota', metricSelections:{}, metricDetailOpen:null, comparisonGroup:'overall', liveUpdatedAt:null,
                      samplePreset:'half', autoUkf:true,
+                     tableExportSelection:new Set(['hot3d-camera','arctic-camera','vidihand-arctic','vidihand-hot3d']), tableExporting:false,
                      selection:{}, selectedModels:[], modelRuns:[], modelResults:[], activeModel:null,
                      historyTier:'half', historyOptions:[], historyResults:[], historyLoading:false, historyRoot:'', historyError:null,
                      modelOptionsLoaded:false},
@@ -687,12 +688,26 @@ function _loadServerVideo(pan,badge,retry){
   updateExportButton();
 }
 
-function _wireServerVideoPanel(pan,badge){
+function _wireServerVideoPanel(pan,badge,{autoStart=true}={}){
   const video=pan.video;
   pan.badge=badge;
   pan.startRender=(retry=false)=>{
+    if(pan.renderDeferred){
+      pan.pendingRetry=pan.pendingRetry||retry;
+      badge.classList.remove('rendering','error');
+      badge.style.display=''; badge.style.pointerEvents='none';
+      badge.textContent=`${pan.label}等待整体·2D完成…`;
+      return;
+    }
     pan.failed=false; pan.renderDone=false; pan.loadRequested=false;
     _loadServerVideo(pan,badge,retry);
+  };
+  pan.renderDeferred=!autoStart;
+  pan.releaseRender=()=>{
+    if(!pan.renderDeferred) return;
+    pan.renderDeferred=false;
+    const retry=Boolean(pan.pendingRetry); pan.pendingRetry=false;
+    pan.startRender(retry);
   };
   const onMediaReady=()=>{
     pan.renderDone=true; pan.renderStarted=false; pan.failed=false;
@@ -711,6 +726,13 @@ function _wireServerVideoPanel(pan,badge){
   });
 
   pan.showRenderProgress=progress=>{
+    if(pan.renderDeferred){
+      pan.lastRenderProgress=progress||null;
+      badge.classList.remove('rendering','error');
+      badge.style.display=''; badge.style.pointerEvents='none';
+      badge.textContent=`${pan.label}等待整体·2D完成…`;
+      return;
+    }
     if(!progress){
       if(!pan.renderStarted&&!pan.renderDone){
         _manualRenderBadge(pan,badge,`${pan.label}尚未渲染`);
@@ -749,7 +771,7 @@ function _wireServerVideoPanel(pan,badge){
         const progress=await getJSON(pan.progressUrl);
         pan.showRenderProgress(progress);
       }catch(error){
-        if(!pan.renderStarted&&!pan.renderDone){
+        if(!pan.renderDeferred&&!pan.renderStarted&&!pan.renderDone){
           _manualRenderBadge(pan,badge,`${pan.label}状态暂时不可用`,'重试渲染');
         }
       }
@@ -800,7 +822,7 @@ function _invalidateWorldVideo(pan){
 }
 
 // 按 state.order（跳过 hidden）渲染各模块。隐藏的机器人面板不会创建视频或请求渲染；
-// 手动开启后，裸视频没有 GT 时把两种机器人渲染并排。
+// 手动开启后，MuJoCo 与 Wuji Hand 固定并排，并等待整体·2D先完成。
 // preserveTime：尽量保留主视频进度。渲染后同步右侧顺序调节栏。
 function buildPanels(preserveTime){
   const cont = $('#blocks');
@@ -818,8 +840,15 @@ function buildPanels(preserveTime){
   const loaded = state.loaded;
   const ov = state.layout==='overlay';
   const vids = [];
-  const primarySceneIds = new Set(state.no_truth
-    ? ['mujoco_3d','wuji_retarget_3d'] : []);
+  let resolvePrimary2D;
+  const primary2DReady=new Promise(resolve=>{ resolvePrimary2D=resolve; });
+  let primary2DSettled=false, hasPrimary2D=false;
+  const deferredRobotPanels=[];
+  const settlePrimary2D=()=>{
+    if(primary2DSettled) return;
+    primary2DSettled=true; resolvePrimary2D();
+  };
+  const primarySceneIds = new Set(['mujoco_3d','wuji_retarget_3d']);
   const pairPrimaryScenes = loaded && primarySceneIds.size===2
     && [...primarySceneIds].every(id=>!state.hidden.has(id));
   let primarySceneRow = null;
@@ -848,8 +877,15 @@ function buildPanels(preserveTime){
       appendPanel(sec,id);
       const pan = { id, kind:'video', content:P.content, video:sec.querySelector('.v2d') };
       const badge = sec.querySelector('.vbadge'); let vdone=false;
-      pan.video.addEventListener('loadeddata', ()=>{ vdone=true; if(badge) badge.style.display='none'; requestDraw(); updateExportButton(); });
-      pan.video.addEventListener('error', ()=>{ vdone=true; if(badge){ badge.textContent='2D 渲染失败'; badge.style.display=''; } updateExportButton(); });
+      if(id==='both_2d') hasPrimary2D=true;
+      pan.video.addEventListener('loadeddata', ()=>{
+        vdone=true; if(id==='both_2d') settlePrimary2D();
+        if(badge) badge.style.display='none'; requestDraw(); updateExportButton();
+      });
+      pan.video.addEventListener('error', ()=>{
+        vdone=true; if(id==='both_2d') settlePrimary2D();
+        if(badge){ badge.textContent='2D 渲染失败'; badge.style.display=''; } updateExportButton();
+      });
       pan.video.controls = true;
       const rawq = state.rawOnly ? '&raw=1' : '';
       const camq = state.rawOnly ? '' :
@@ -934,9 +970,13 @@ function buildPanels(preserveTime){
         renderStarted:false,loadRequested:false,failed:false,
         videoUrl:U(`/mujoco/${state.eid}?${mq}&_=${encodeURIComponent(mujocoBust)}`),
         progressUrl:`/api/mujoco/progress/${state.eid}?${mq}`};
-      video.controls=true;
+      video.controls=false; video.disablePictureInPicture=true; video.tabIndex=-1;
+      video.classList.add('synced-follower-video');
+      video.setAttribute('controlsList','nodownload nofullscreen noremoteplayback noplaybackrate');
+      video.setAttribute('aria-label','MuJoCo video synchronized with the overall 2D video');
       state.panels[id]=pan;
-      _wireServerVideoPanel(pan,badge);
+      _wireServerVideoPanel(pan,badge,{autoStart:false});
+      deferredRobotPanels.push(pan);
       if(preserveTime&&t>0) video.addEventListener('loadedmetadata',()=>{ try{video.currentTime=Math.min(t,video.duration||t);}catch(e){} },{once:true});
     } else if(P.kind==='retarget'){
       const source=state.rawOnly?'gt':'pred';
@@ -951,9 +991,13 @@ function buildPanels(preserveTime){
         renderStarted:false,loadRequested:false,failed:false,
         videoUrl:U(`/retarget/${state.eid}?${rq}&_=${encodeURIComponent((source==='gt'?'gt':CKPT_TAG)+':'+RETARGET_RENDER_TAG)}`),
         progressUrl:`/api/retarget/progress/${state.eid}?${rq}`};
-      video.controls=true;
+      video.controls=false; video.disablePictureInPicture=true; video.tabIndex=-1;
+      video.classList.add('synced-follower-video');
+      video.setAttribute('controlsList','nodownload nofullscreen noremoteplayback noplaybackrate');
+      video.setAttribute('aria-label','Wuji Hand video synchronized with the overall 2D video');
       state.panels[id]=pan;
-      _wireServerVideoPanel(pan,badge);
+      _wireServerVideoPanel(pan,badge,{autoStart:false});
+      deferredRobotPanels.push(pan);
       if(preserveTime&&t>0) video.addEventListener('loadedmetadata',()=>{ try{video.currentTime=Math.min(t,video.duration||t);}catch(e){} },{once:true});
     } else if(P.kind==='nums'){
       sec.innerHTML = `<div class="bnums"></div>`;
@@ -970,6 +1014,12 @@ function buildPanels(preserveTime){
       state.panels[id] = { id, kind:'tool', wrapId:P.wrapId };
     }
   }
+  if(!hasPrimary2D) settlePrimary2D();
+  primary2DReady.then(()=>{
+    for(const pan of deferredRobotPanels){
+      if(state.panels[pan.id]===pan) pan.releaseRender();
+    }
+  });
   if(!cont.children.length){
     cont.innerHTML = `<div class="empty-state"><div><span class="empty-index">READY / WAITING</span>
       <b>选择样本，按需调整参数</b><p>输入与设置只会进入待应用状态；模型仅在点击“开始推理”后运行。</p></div></div>`;
@@ -982,7 +1032,7 @@ function buildPanels(preserveTime){
   if(loaded) requestDraw();
 }
 
-// 当前帧取自指定视频（各块独立播放，3D 跟随其所属视频进度）。
+// 当前帧取自主视频；MuJoCo 与 Wuji Hand 只作为整体·2D 的同步跟随画面。
 function frameOf(video){ return Math.min(Math.round(((video&&video.currentTime)||0) * state.fps), state.nframes-1); }
 
 function requestDraw(){ _drawPending = true; }
@@ -2886,6 +2936,7 @@ function wireBench(){
     state.bench.autoUkf=autoUkf.checked;
     updateBenchCount();
   };
+  wireBenchTableExport();
   renderBench();
 }
 // benchmark 面板已纳入栏目系统:显隐=切 state.hidden 并重建(与调节栏 👁 同一套);on 时滚动到位。
@@ -3257,6 +3308,256 @@ function benchSuiteMetrics(suite=currentBenchSuite()){
 function benchSuiteTables(suite=currentBenchSuite()){
   const ids=suite.tableSuiteIds||[];
   return ids.length?ids.flatMap(id=>(BENCHMARK_SUITES[id]||{}).tables||[]):suite.tables||[];
+}
+
+const BENCH_TABLE_EXPORTS = Object.freeze([
+  {key:'hot3d-camera', suite:'hot3d_camera', table:'icra-hot3d-camera-comparison', file:'hot3d-camera'},
+  {key:'arctic-camera', suite:'arctic_camera', table:'icra-arctic-camera-comparison', file:'arctic-camera'},
+  {key:'vidihand-arctic', suite:'vidihand', table:'vidihand-arctic', file:'vidihand-arctic'},
+  {key:'vidihand-hot3d', suite:'vidihand', table:'vidihand-hot3d', file:'vidihand-hot3d'},
+]);
+
+function benchTableExportDefinition(spec){
+  const suite=BENCHMARK_SUITES[spec.suite];
+  const table=((suite&&suite.tables)||[]).find(item=>item.id===spec.table);
+  return table?{...spec,suiteLabel:suite.label,table}:null;
+}
+
+function benchTableExportSelected(){
+  return BENCH_TABLE_EXPORTS.filter(spec=>state.bench.tableExportSelection.has(spec.key))
+    .map(benchTableExportDefinition).filter(Boolean);
+}
+
+function setBenchTableExportStatus(message,kind=''){
+  const status=$('#bfTableExportStatus');
+  if(!status) return;
+  status.className=kind;
+  status.textContent=message;
+}
+
+function updateBenchTableExportControls(){
+  const selected=state.bench.tableExportSelection, exporting=Boolean(state.bench.tableExporting);
+  document.querySelectorAll('[data-bench-table-export]').forEach(box=>{
+    box.checked=selected.has(box.dataset.benchTableExport);
+    box.disabled=exporting;
+  });
+  const count=$('#bfTableExportCount');
+  if(count) count.textContent=`已选择 ${selected.size} / ${BENCH_TABLE_EXPORTS.length}`;
+  for(const id of ['#bfTableExportSeparate','#bfTableExportCombined']){
+    const button=$(id); if(button) button.disabled=exporting||!selected.size;
+  }
+  document.querySelectorAll('[data-bench-table-select]').forEach(button=>{ button.disabled=exporting; });
+}
+
+function wireBenchTableExport(){
+  document.querySelectorAll('[data-bench-table-export]').forEach(box=>box.onchange=()=>{
+    const key=box.dataset.benchTableExport;
+    if(box.checked) state.bench.tableExportSelection.add(key);
+    else state.bench.tableExportSelection.delete(key);
+    setBenchTableExportStatus(state.bench.tableExportSelection.size?'就绪 · 图片按完整指标列导出':'请至少选择一张表格');
+    updateBenchTableExportControls();
+  });
+  document.querySelectorAll('[data-bench-table-select]').forEach(button=>button.onclick=()=>{
+    state.bench.tableExportSelection=new Set(button.dataset.benchTableSelect==='all'
+      ?BENCH_TABLE_EXPORTS.map(spec=>spec.key):[]);
+    setBenchTableExportStatus(state.bench.tableExportSelection.size?'就绪 · 图片按完整指标列导出':'请至少选择一张表格');
+    updateBenchTableExportControls();
+  });
+  const separate=$('#bfTableExportSeparate'), combined=$('#bfTableExportCombined');
+  if(separate) separate.onclick=()=>exportBenchTablesAsJpg(false);
+  if(combined) combined.onclick=()=>exportBenchTablesAsJpg(true);
+  updateBenchTableExportControls();
+}
+
+function benchTableExportRows(table){
+  const rows=(table.rows||[]).map(row=>({...row,values:[...(row.values||[])]}));
+  const entries=benchResultEntries(benchDisplayResults(state.bench),state.bench.live_report,state.bench.activeModel);
+  const live=benchSotaCurrentRows(entries,table).filter(row=>row.hasValues);
+  live.forEach((row,index)=>rows.push({
+    section:index===0?'本次模型 · 当前 Viewer 结果':null,
+    method:`M${row.modelIndex+1} · ${row.model.variant==='ukf'?'UKF · ':''}${row.model.label||row.model.step||'checkpoint'}`,
+    values:row.values,
+    comparable:row.comparable,
+    live:true,
+  }));
+  return rows;
+}
+
+function benchTableExportTimestamp(){
+  const date=new Date(), pad=value=>String(value).padStart(2,'0');
+  return `${date.getFullYear()}${pad(date.getMonth()+1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+function benchTableExportWrap(ctx,text,maxWidth){
+  const source=String(text||'').trim();
+  if(!source) return [];
+  const lines=[];
+  for(const paragraph of source.split(/\n/)){
+    let line='';
+    for(const char of paragraph){
+      const candidate=line+char;
+      if(line&&ctx.measureText(candidate).width>maxWidth){
+        lines.push(line.trimEnd()); line=char.trimStart();
+      }else line=candidate;
+    }
+    if(line) lines.push(line.trimEnd());
+  }
+  return lines;
+}
+
+function benchTableExportMetrics(table,rows,ctx){
+  ctx.font='700 14px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+  const methodWidth=Math.max(360,Math.min(760,Math.ceil(Math.max(
+    ctx.measureText('Method').width,...rows.map(row=>ctx.measureText(row.method||'').width))+34)));
+  const columns=(table.columns||[]).map((column,index)=>{
+    const unit=column.unit||((benchGlobalMetricSpec(column.metric)||{}).unit)||'';
+    const second=`${benchMetricDirectionMark(column.direction)}${unit?' · '+unit:''}`;
+    const values=rows.map(row=>benchTableValue(table,column,(row.values||[])[index]));
+    const content=Math.max(ctx.measureText(column.label).width,ctx.measureText(second).width,
+      ...values.map(value=>ctx.measureText(value).width));
+    return {...column,index,unit,width:Math.max(116,Math.min(190,Math.ceil(content+30)))};
+  });
+  return {columns,methodWidth,tableWidth:methodWidth+columns.reduce((sum,column)=>sum+column.width,0)};
+}
+
+function benchRenderTableExport(definition){
+  const table=definition.table, rows=benchTableExportRows(table), scale=2;
+  const measure=document.createElement('canvas').getContext('2d');
+  const metrics=benchTableExportMetrics(table,rows,measure), outer=34, inner=26;
+  const width=metrics.tableWidth+2*(outer+inner);
+  measure.font='600 13px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+  const textWidth=metrics.tableWidth;
+  const sourceLines=benchTableExportWrap(measure,table.source||'',textWidth);
+  measure.font='400 13px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+  const noteLines=benchTableExportWrap(measure,table.note||'',textWidth);
+  const titleHeight=42+sourceLines.length*20+noteLines.length*21+20;
+  const headerHeight=68, sectionHeight=36, rowHeight=48;
+  const bodyHeight=rows.reduce((sum,row)=>sum+(row.section?sectionHeight:0)+rowHeight,0);
+  const footerHeight=42;
+  const height=outer*2+inner*2+titleHeight+headerHeight+bodyHeight+footerHeight;
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.ceil(width*scale); canvas.height=Math.ceil(height*scale);
+  canvas.dataset.logicalWidth=width; canvas.dataset.logicalHeight=height;
+  const ctx=canvas.getContext('2d'); ctx.scale(scale,scale);
+  ctx.fillStyle='#07100f'; ctx.fillRect(0,0,width,height);
+  ctx.strokeStyle='rgba(88,213,210,.06)'; ctx.lineWidth=1;
+  for(let x=0;x<width;x+=28){ ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke(); }
+  for(let y=0;y<height;y+=28){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke(); }
+  const cardX=outer,cardY=outer,cardW=width-outer*2,cardH=height-outer*2;
+  ctx.fillStyle='#0e1917';ctx.strokeStyle='#29413a';ctx.lineWidth=1.5;
+  ctx.beginPath();
+  if(ctx.roundRect) ctx.roundRect(cardX,cardY,cardW,cardH,16);
+  else ctx.rect(cardX,cardY,cardW,cardH);
+  ctx.fill();ctx.stroke();
+  const x0=cardX+inner, contentY=cardY+inner;
+  ctx.fillStyle='#b9f45a';ctx.font='800 11px "JetBrains Mono", monospace';
+  ctx.fillText('MINT / BENCHMARK TABLE',x0,contentY+10);
+  ctx.fillStyle='#edf5ef';ctx.font='800 27px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+  ctx.fillText(`${definition.suiteLabel} · ${table.title}`,x0,contentY+43);
+  let y=contentY+66;
+  ctx.fillStyle='#58d5d2';ctx.font='600 13px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+  sourceLines.forEach(line=>{ctx.fillText(line,x0,y);y+=20;});
+  ctx.fillStyle='#9cafaa';ctx.font='400 13px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+  noteLines.forEach(line=>{ctx.fillText(line,x0,y);y+=21;});
+  y=contentY+titleHeight;
+  const columnX=[x0,x0+metrics.methodWidth];
+  metrics.columns.forEach(column=>columnX.push(columnX[columnX.length-1]+column.width));
+  ctx.fillStyle='#14221f';ctx.fillRect(x0,y,metrics.tableWidth,headerHeight);
+  ctx.strokeStyle='#365249';ctx.strokeRect(x0,y,metrics.tableWidth,headerHeight);
+  ctx.fillStyle='#8da29a';ctx.font='700 13px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+  ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('Method',x0+15,y+headerHeight/2);
+  metrics.columns.forEach((column,index)=>{
+    const left=columnX[index+1],center=left+column.width/2;
+    ctx.strokeStyle='#29413a';ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(left,y+headerHeight);ctx.stroke();
+    ctx.textAlign='center';ctx.fillStyle='#edf5ef';ctx.font='700 13px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(column.label,center,y+25);
+    ctx.fillStyle='#8da29a';ctx.font='500 11px "Noto Sans SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(`${benchMetricDirectionMark(column.direction)}${column.unit?' · '+column.unit:''}`,center,y+46);
+  });
+  y+=headerHeight;
+  const comparableBest=new Map();
+  metrics.columns.forEach(column=>{
+    const values=rows.filter(row=>row.comparable!==false)
+      .map(row=>benchComparableValue(table,column,(row.values||[])[column.index])).filter(Number.isFinite);
+    if(values.length) comparableBest.set(column.index,benchBestMetricValue(values,column.direction));
+  });
+  rows.forEach((row,rowIndex)=>{
+    if(row.section){
+      ctx.fillStyle='#102522';ctx.fillRect(x0,y,metrics.tableWidth,sectionHeight);
+      ctx.strokeStyle='#29413a';ctx.strokeRect(x0,y,metrics.tableWidth,sectionHeight);
+      ctx.textAlign='left';ctx.fillStyle='#58d5d2';ctx.font='700 11px "JetBrains Mono", "Noto Sans SC", monospace';
+      ctx.fillText(row.section,x0+14,y+sectionHeight/2);y+=sectionHeight;
+    }
+    ctx.fillStyle=row.live?'#132923':(rowIndex%2?'#0c1715':'#0e1b18');ctx.fillRect(x0,y,metrics.tableWidth,rowHeight);
+    ctx.strokeStyle='#203a33';ctx.strokeRect(x0,y,metrics.tableWidth,rowHeight);
+    ctx.textAlign='left';ctx.fillStyle=row.live?'#b9f45a':'#d5e2dc';
+    ctx.font=`${row.live?'700':'550'} 13px "Noto Sans SC", "Microsoft YaHei", sans-serif`;
+    ctx.fillText(row.method||'',x0+14,y+rowHeight/2);
+    metrics.columns.forEach((column,index)=>{
+      const left=columnX[index+1],center=left+column.width/2,value=(row.values||[])[column.index];
+      const comparable=benchComparableValue(table,column,value);
+      const best=row.comparable!==false&&Number.isFinite(comparable)&&comparable===comparableBest.get(column.index);
+      ctx.strokeStyle='#203a33';ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(left,y+rowHeight);ctx.stroke();
+      if(best){ctx.fillStyle='rgba(255,111,111,.12)';ctx.fillRect(left+1,y+1,column.width-2,rowHeight-2);}
+      ctx.textAlign='center';ctx.fillStyle=best?'#ff8b8b':(row.live?'#b9f45a':'#edf5ef');ctx.font=`${best||row.live?'750':'500'} 13px "JetBrains Mono", "Noto Sans SC", monospace`;
+      ctx.fillText(benchTableValue(table,column,value),center,y+rowHeight/2);
+    });
+    y+=rowHeight;
+  });
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillStyle='#789088';ctx.font='500 10px "JetBrains Mono", monospace';
+  ctx.fillText(`MINT Viewer · JPG export · ${new Date().toLocaleString()}`,x0,height-outer-inner+8);
+  return canvas;
+}
+
+function benchCanvasBlob(canvas){
+  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('JPG 编码失败')),'image/jpeg',0.95));
+}
+
+function benchDownloadBlob(blob,filename){
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+
+async function exportBenchTablesAsJpg(combined){
+  if(state.bench.tableExporting) return;
+  const selected=benchTableExportSelected();
+  if(!selected.length){setBenchTableExportStatus('请至少选择一张表格','error');return;}
+  state.bench.tableExporting=true;updateBenchTableExportControls();
+  const stamp=benchTableExportTimestamp();
+  try{
+    if(document.fonts&&document.fonts.ready) await document.fonts.ready;
+    const rendered=[];
+    for(const [index,definition] of selected.entries()){
+      setBenchTableExportStatus(`正在生成 ${index+1} / ${selected.length} · ${definition.suiteLabel} · ${definition.table.title}`,'busy');
+      rendered.push({definition,canvas:benchRenderTableExport(definition)});
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+    }
+    if(combined){
+      const scale=2,gap=28,top=126,bottom=44,side=38;
+      const widths=rendered.map(item=>+item.canvas.dataset.logicalWidth),heights=rendered.map(item=>+item.canvas.dataset.logicalHeight);
+      const width=Math.max(...widths)+side*2,height=top+bottom+heights.reduce((sum,value)=>sum+value,0)+gap*(rendered.length-1);
+      const canvas=document.createElement('canvas');canvas.width=Math.ceil(width*scale);canvas.height=Math.ceil(height*scale);
+      const ctx=canvas.getContext('2d');ctx.scale(scale,scale);ctx.fillStyle='#040908';ctx.fillRect(0,0,width,height);
+      ctx.fillStyle='#b9f45a';ctx.font='800 12px "JetBrains Mono", monospace';ctx.fillText('MINT / SELECTED BENCHMARK EXPORT',side,42);
+      ctx.fillStyle='#edf5ef';ctx.font='800 30px "Noto Sans SC", "Microsoft YaHei", sans-serif';ctx.fillText('Benchmark 四表汇总',side,80);
+      ctx.fillStyle='#8da29a';ctx.font='500 12px "Noto Sans SC", "Microsoft YaHei", sans-serif';ctx.fillText(`已选择 ${rendered.length} 张表 · ${new Date().toLocaleString()}`,side,105);
+      let y=top;
+      rendered.forEach((item,index)=>{const w=widths[index],h=heights[index];ctx.drawImage(item.canvas,(width-w)/2,y,w,h);y+=h+gap;});
+      benchDownloadBlob(await benchCanvasBlob(canvas),`mint-benchmark-combined-${stamp}.jpg`);
+      setBenchTableExportStatus(`已汇总导出 ${rendered.length} 张表格 · mint-benchmark-combined-${stamp}.jpg`,'ok');
+    }else{
+      for(const [index,item] of rendered.entries()){
+        setBenchTableExportStatus(`正在保存 ${index+1} / ${rendered.length} · ${item.definition.table.title}`,'busy');
+        benchDownloadBlob(await benchCanvasBlob(item.canvas),`mint-benchmark-${item.definition.file}-${stamp}.jpg`);
+      }
+      setBenchTableExportStatus(`已分别导出 ${rendered.length} 张 JPG；浏览器可能提示允许多个文件下载`,'ok');
+    }
+  }catch(error){
+    console.error('[benchmark table export]',error);setBenchTableExportStatus(`导出失败：${error&&error.message||error}`,'error');
+  }finally{
+    state.bench.tableExporting=false;updateBenchTableExportControls();
+  }
 }
 function benchSuiteMetricAlias(metricId,suite=currentBenchSuite()){
   for(const source of benchSuiteSources(suite)){
@@ -3935,7 +4236,8 @@ function renderBenchReferenceTable(table, selectedMetrics){
   if(!columns.length) return '';
   const best=new Map();
   for(const column of columns){
-    const values=(table.rows||[]).map(row=>benchComparableValue(table,column,row.values[column.index])).filter(Number.isFinite);
+    const values=(table.rows||[]).filter(row=>row.comparable!==false)
+      .map(row=>benchComparableValue(table,column,row.values[column.index])).filter(Number.isFinite);
     if(values.length) best.set(column.index,benchBestMetricValue(values,column.direction));
   }
   let body='', previousSection=null;
@@ -3948,7 +4250,7 @@ function renderBenchReferenceTable(table, selectedMetrics){
     body+=`<tr><th>${_esc(row.method)}</th>`;
     for(const column of columns){
       const value=row.values[column.index], comparable=benchComparableValue(table,column,value);
-      const isBest=Number.isFinite(comparable)&&comparable===best.get(column.index);
+      const isBest=row.comparable!==false&&Number.isFinite(comparable)&&comparable===best.get(column.index);
       body+=`<td class="bmetrics${isBest?' sota':''}"${isBest?` title="${localBaseline?'该离线基线快照此列最优':'该公开表此列 SOTA'}"`:''}>${_esc(benchTableValue(table,column,value))}</td>`;
     }
     body+='</tr>';

@@ -1,0 +1,8 @@
+numpy>=1.21.0
+mujoco==3.11.0
+# Pin 2.7 keeps the Viewer compatible with MINT's NumPy 1.26 inference stack.
+pin==2.7.0
+nlopt==2.7.1
+pyyaml
+scipy>=1.11.0
+opencv-python

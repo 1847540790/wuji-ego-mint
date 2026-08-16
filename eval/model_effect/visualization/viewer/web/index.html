@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wuji Ego · Model Effect Console</title>
-<link rel="stylesheet" href="style.css?v=20260816-4">
+<link rel="stylesheet" href="style.css?v=20260816-5">
 </head>
 <body>
 <div id="app">
@@ -371,6 +371,26 @@
       </div>
       <div id="bfMetricPicker" class="bf-metric-picker"></div>
     </section>
+    <section id="bfTableExport" class="bf-table-export" aria-labelledby="bfTableExportTitle">
+      <header>
+        <span><b id="bfTableExportTitle">导出四张结果表 · JPG</b><small>多选表格后可分别保存，或汇总为一张长图；导出包含固定行及已有的本次模型结果。</small></span>
+        <output id="bfTableExportCount">已选择 4 / 4</output>
+      </header>
+      <div class="bf-table-export-options" role="group" aria-label="选择要导出的 Benchmark 表格">
+        <label><input type="checkbox" data-bench-table-export="hot3d-camera" checked><span>HOT3D 相机表</span></label>
+        <label><input type="checkbox" data-bench-table-export="arctic-camera" checked><span>ARCTIC 相机表</span></label>
+        <label><input type="checkbox" data-bench-table-export="vidihand-arctic" checked><span>ViDiHand · ARCTIC</span></label>
+        <label><input type="checkbox" data-bench-table-export="vidihand-hot3d" checked><span>ViDiHand · HOT3D</span></label>
+      </div>
+      <div class="bf-table-export-actions">
+        <button type="button" data-bench-table-select="all">全选表格</button>
+        <button type="button" data-bench-table-select="none">清空选择</button>
+        <span></span>
+        <button id="bfTableExportSeparate" class="secondary" type="button">分别导出 JPG</button>
+        <button id="bfTableExportCombined" class="primary" type="button">汇总导出 JPG</button>
+      </div>
+      <p id="bfTableExportStatus" aria-live="polite">就绪 · 图片按完整指标列导出</p>
+    </section>
     <div class="bench-grid" id="bfGrid"></div>
     <section id="bfWorkSummary" class="bf-work-summary" aria-live="polite"></section>
     <section class="bf-reference" id="bfReferenceTables"></section>
@@ -413,9 +433,9 @@
     <span id="inList" class="browlist" title="点目录进入 / 点视频文件选中输入（不会自动推理）"></span></span>
 </aside>
 </div>
-<script src="i18n.js?v=20260816-2"></script>
+<script src="i18n.js?v=20260816-3"></script>
 <script src="camera_baselines.js?v=20260814-1"></script>
-<script src="benchmark_suites.js?v=20260816-5"></script>
-<script src="app.js?v=20260816-7"></script>
+<script src="benchmark_suites.js?v=20260816-6"></script>
+<script src="app.js?v=20260816-8"></script>
 </body>
 </html>

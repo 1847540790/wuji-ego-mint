@@ -2765,14 +2765,22 @@ class Store:
             return source_id, path
 
         rendered_by_index = [None] * source_count
-        with ThreadPoolExecutor(
-                max_workers=min(4, source_count), thread_name_prefix="viewer-export") as pool:
-            futures = {
-                pool.submit(render_source, index, source_id): index
-                for index, source_id in enumerate(ordered)
-            }
-            for future in as_completed(futures):
-                rendered_by_index[futures[future]] = future.result()
+        remaining_indices = list(range(source_count))
+        if "both_2d" in ordered:
+            primary_index = ordered.index("both_2d")
+            rendered_by_index[primary_index] = render_source(primary_index, "both_2d")
+            remaining_indices.remove(primary_index)
+
+        if remaining_indices:
+            with ThreadPoolExecutor(
+                    max_workers=min(4, len(remaining_indices)),
+                    thread_name_prefix="viewer-export") as pool:
+                futures = {
+                    pool.submit(render_source, index, ordered[index]): index
+                    for index in remaining_indices
+                }
+                for future in as_completed(futures):
+                    rendered_by_index[futures[future]] = future.result()
         rendered = [item for item in rendered_by_index if item is not None]
         emit(stage="compose", progress=0.92, source_index=source_count,
              source_total=source_count, message="所选画面渲染完成，正在合成导出视频")

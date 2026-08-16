@@ -22,6 +22,9 @@ load the MINT model, run inference on a LeRobot episode, and inspect GT/predicti
 overlays, camera trajectories, hand motion, frame metrics, and benchmark results
 in one interface.
 
+**Hardware requirement: MINT model inference requires an NVIDIA GPU with at
+least 24 GB of VRAM.**
+
 Install the inference environment, download the public MINT model, and launch
 the Viewer:
 

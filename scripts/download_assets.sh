@@ -2,20 +2,17 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ROBOT_DIR="$PROJECT_DIR/assets/robot_hand"
 CHECKPOINT_DIR="$PROJECT_DIR/checkpoints"
-ROBOT_URL="https://github.com/1847540790/wuji-ego-mint/releases/download/assets-v0.1.0/wuji-hand-description.tar.gz"
-STUDENT_HF_URL="https://huggingface.co/ZZJAsher/mint_v1/resolve/main/model.safetensors"
-STUDENT_MS_REPO="AsherZhu/mint_v1"
-STUDENT_MS_REVISION="master"
+MINT_HF_URL="https://huggingface.co/ZZJAsher/mint_v1/resolve/main/model.safetensors"
+MINT_MS_REPO="AsherZhu/mint_v1"
+MINT_MS_REVISION="master"
 HF_MIRROR_ENDPOINT="${MINT_HF_MIRROR:-${HF_ENDPOINT:-https://hf-mirror.com}}"
 DOWNLOAD_CONNECT_TIMEOUT="${MINT_DOWNLOAD_CONNECT_TIMEOUT:-15}"
 DOWNLOAD_SPEED_LIMIT="${MINT_DOWNLOAD_SPEED_LIMIT:-1024}"
 DOWNLOAD_SPEED_TIME="${MINT_DOWNLOAD_SPEED_TIME:-30}"
-ROBOT_SHA256="4594e07774211d21eda7d98ef3f7cf6f3a06f12bc750b505a8bf54765d357e69"
-STUDENT_SHA256="7b2f0aa5dfd00c271bb2f12c841ccfcc70e81e4052d413eacb5fb42a1bcc36c8"
+MINT_SHA256="7b2f0aa5dfd00c271bb2f12c841ccfcc70e81e4052d413eacb5fb42a1bcc36c8"
 
-mkdir -p "$ROBOT_DIR" "$CHECKPOINT_DIR"
+mkdir -p "$CHECKPOINT_DIR"
 
 verify() {
   local destination="$1"
@@ -92,13 +89,13 @@ download_verified() {
   mv -f "$partial" "$destination"
 }
 
-download_student() {
+download_mint_model() {
   local destination="$CHECKPOINT_DIR/model.safetensors"
   local staging="$CHECKPOINT_DIR/.modelscope-download"
   local hf_header=()
   local hf_token="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}"
 
-  if [[ -s "$destination" ]] && verify "$destination" "$STUDENT_SHA256"; then
+  if [[ -s "$destination" ]] && verify "$destination" "$MINT_SHA256"; then
     echo "Verified existing asset: ${destination#"$PROJECT_DIR/"}"
     return
   fi
@@ -107,10 +104,10 @@ download_student() {
   if command -v modelscope >/dev/null 2>&1; then
     mkdir -p "$staging"
     if MODELSCOPE_DOWNLOAD_PARALLELS="${MODELSCOPE_DOWNLOAD_PARALLELS:-8}" \
-      modelscope download --model "$STUDENT_MS_REPO" \
-      --revision "$STUDENT_MS_REVISION" \
+      modelscope download --model "$MINT_MS_REPO" \
+      --revision "$MINT_MS_REVISION" \
       --local_dir "$staging" model.safetensors; then
-      if verify "$staging/model.safetensors" "$STUDENT_SHA256"; then
+      if verify "$staging/model.safetensors" "$MINT_SHA256"; then
         mv -f "$staging/model.safetensors" "$destination"
         return
       fi
@@ -128,19 +125,16 @@ download_student() {
     hf_header=(--header "Authorization: Bearer $hf_token")
   fi
 
-  if download_verified "$STUDENT_HF_URL" "$destination" "$STUDENT_SHA256" "${hf_header[@]}"; then
+  if download_verified "$MINT_HF_URL" "$destination" "$MINT_SHA256" "${hf_header[@]}"; then
     return
   fi
 
   return 1
 }
 
-echo "[1/2] Robot description"
-download_verified "$ROBOT_URL" \
-  "$ROBOT_DIR/wuji-hand-description.tar.gz" "$ROBOT_SHA256"
-echo "[2/2] MINT student checkpoint"
-download_student
+echo "[1/1] Public MINT model"
+download_mint_model
 
-tar -xzf "$ROBOT_DIR/wuji-hand-description.tar.gz" -C "$ROBOT_DIR"
-echo "Student checkpoint and robot assets are ready."
+echo "MINT model checkpoint is ready."
+echo "URDF and STL robot descriptions are not downloaded by this script."
 echo "MANO is not downloaded. Follow docs/installation.md and accept its license."

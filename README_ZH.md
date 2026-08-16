@@ -10,6 +10,8 @@ MINT 是一个面向第一视角相机与手部模型推理、训练、效果可
 
 Web Viewer 是 MINT 的主要入口，可以在一个界面中选择 checkpoint、加载 MINT 模型、对 LeRobot episode 运行推理，并查看 GT/预测叠加、相机轨迹、手部运动、逐帧指标和 benchmark 结果。
 
+**硬件要求：MINT 模型推理需要 NVIDIA GPU，显存至少为 24 GB。**
+
 安装推理环境、下载公开 MINT 模型并启动 Viewer：
 
 ```bash

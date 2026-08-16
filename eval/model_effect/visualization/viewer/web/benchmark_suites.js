@@ -122,7 +122,11 @@ const VIDIHAND_ARCTIC_ROWS = [
   {method: 'WiLoR [19]', values: [0.919, 0.951, 0.974, 22.012, 11.873, 17.358, 0.075, 24.091]},
   {method: 'Dyn-HaMR [32]', values: [0.842, 0.918, 0.951, 27.904, 17.017, 25.951, 0.121, 12.840]},
   {method: 'HaWoR [34]', values: [0.700, 0.817, 0.895, 45.357, 26.375, 43.325, 0.149, 19.789]},
-  {method: 'ViDiHand（论文方法）', values: [0.997, 0.999, 0.999, 21.668, 9.821, 14.642, 0.047, 3.183]},
+  {method: 'ViDiHand（已在大部分 ARCTIC/HOT3D 数据上进行过训练，仅供参考，不具备实际意义）', values: [0.997, 0.999, 0.999, 21.668, 9.821, 14.642, 0.047, 3.183]},
+  {section: '本地固定记录 · sota-fixed-v1 50%（非论文同 split）', method: 'MINT（相机轨迹二阶段微调）· UKF†', comparable: false,
+   values: [0.9164, 0.9571, 0.9781, 51.0883, 27.7045, 24.2211, 0.1404, 2.5410]},
+  {method: 'MINT（未微调相机轨迹）· raw†', comparable: false,
+   values: [0.9164, 0.9571, 0.9781, 51.0271, 27.7103, 24.1860, 0.1404, 12.2614]},
 ];
 
 const VIDIHAND_HOT3D_ROWS = [
@@ -134,7 +138,11 @@ const VIDIHAND_HOT3D_ROWS = [
   {method: 'WiLoR [19]', values: [0.827, 0.897, 0.937, 30.966, 19.980, 25.746, 0.098, 17.976]},
   {method: 'Dyn-HaMR [32]', values: [0.614, 0.811, 0.802, 74.214, 38.201, 43.851, 0.571, 44.942]},
   {method: 'HaWoR [34]', values: [0.348, 0.499, 0.654, 71.396, 66.031, 79.350, 0.262, 23.872]},
-  {method: 'ViDiHand（论文方法）', values: [0.948, 0.974, 0.983, 21.514, 11.383, 15.829, 0.040, 3.741]},
+  {method: 'ViDiHand（已在大部分 ARCTIC/HOT3D 数据上进行过训练，仅供参考，不具备实际意义）', values: [0.948, 0.974, 0.983, 21.514, 11.383, 15.829, 0.040, 3.741]},
+  {section: '本地固定记录 · sota-fixed-v1 50%（非论文同 split）', method: 'MINT（相机轨迹二阶段微调）· UKF†', comparable: false,
+   values: [0.9404, 0.9767, 0.9501, 23.6182, 10.6857, 16.7675, 0.0731, 2.3875]},
+  {method: 'MINT（未微调相机轨迹）· raw†', comparable: false,
+   values: [0.9404, 0.9767, 0.9501, 23.6133, 10.7008, 16.7750, 0.0733, 11.5162]},
 ];
 
 const VIDIHAND_LIVE_VALUES = {
@@ -439,7 +447,7 @@ const BENCHMARK_SUITES = Object.freeze({
   vidihand: {
     id: 'vidihand',
     label: 'ViDiHand 对比',
-    description: '两张固定对比表的方法与数值全部直接引用自 ViDiHand 论文 Table 1，未由本项目重新实测或修改；用户运行后的本次模型结果会另行追加。ViDiHand 训练使用了 ARCTIC 和 HOT3D，相关论文指标仅作同域参考。',
+    description: '两张表中的公开方法与数值直接引用自 ViDiHand 论文 Table 1，未由本项目重新实测或修改；MINT 两行是本项目 sota-fixed-v1 50% 的本地固定记录，与论文不是同一 split。用户运行后的本次模型结果会另行追加。ViDiHand 训练使用了 ARCTIC 和 HOT3D，相关论文指标仅作同域参考。',
     datasets: [
       {name: 'arctic_hand_coverage', label: 'ARCTIC · ViDiHand coverage-aware', note: 'P1 val · 81 帧',
        purpose: '专测 ARCTIC 操作场景中的双手出现检测和相机系姿态；81 帧单次前向，漏检进入姿态惩罚。'},
@@ -448,7 +456,7 @@ const BENCHMARK_SUITES = Object.freeze({
     ],
     guide: {
       title: 'ViDiHand coverage-aware 协议',
-      summary: '面板中的固定方法行和数值全部原样引用自 ViDiHand 论文 Table 1，本项目没有重新运行或修改这些论文数值。Table 1 同时评测手是否被检测到、检测后的 3D pose、朝向/位置和时序稳定性；漏检会使用 canonical MANO 或图像对角线等惩罚。',
+      summary: '公开方法行和数值全部原样引用自 ViDiHand 论文 Table 1，本项目没有重新运行或修改这些论文数值；MINT 两行来自本项目 sota-fixed-v1 50% 本地记录，并以非论文同 split 标注。Table 1 同时评测手是否被检测到、检测后的 3D pose、朝向/位置和时序稳定性；漏检会使用 canonical MANO 或图像对角线等惩罚。',
       stages: [
         {label: 'Detection', text: 'FAcc、Recall、F1 衡量左右手 presence；固定左右槽位，不做跨手匹配。'},
         {label: '3D Pose', text: 'MPJPE-p 与 PA-MPJPE-p 对所有屏幕内 GT 手统计，包括漏检惩罚。'},
@@ -458,7 +466,7 @@ const BENCHMARK_SUITES = Object.freeze({
         {label: 'ARCTIC', text: 'ViDiHand 的训练使用了 ARCTIC；表中 ViDiHand 数值仅作为同域参考，不表示在未见数据上的泛化能力。本地使用 protocol P1 validation 81 帧片段。'},
         {label: 'HOT3D', text: 'ViDiHand 的训练使用了 HOT3D；表中 ViDiHand 数值仅作为同域参考，不表示在未见数据上的泛化能力。本地使用确定性的 local holdout 81 帧片段。'},
       ],
-      warning: '固定对比表全部是 ViDiHand 论文引用数据，不是本项目实测；只有用户启动评测后追加的“本次模型”行来自本地运行。ViDiHand 使用 HOT3D 和 ARCTIC 训练，因此其论文指标仅供同域参考，不具备跨数据集泛化意义。',
+      warning: 'InterWild 至 ViDiHand 的固定行均为论文引用数据；MINT 两行是 sota-fixed-v1 50% 本地固定记录，与论文不是同一 split，不能视为严格同协议排名。用户启动评测后追加的“本次模型”行同样来自本地运行。ViDiHand 使用 HOT3D 和 ARCTIC 训练，因此其论文指标仅供同域参考，不具备跨数据集泛化意义。',
     },
     combos: [
       ['hands_coverage', 'arctic_hand_coverage'],
@@ -528,8 +536,8 @@ const BENCHMARK_SUITES = Object.freeze({
       {
         id: 'vidihand-arctic',
         title: 'ARCTIC',
-        source: '引用：ViDiHand 论文 Table 1 · coverage-aware §4.1',
-        note: '表内固定方法行和数值全部直接引用自 ViDiHand 论文，未由本项目重新实测或修改。ViDiHand 使用了 ARCTIC 训练，其论文指标仅供同域参考，不具备跨数据集泛化意义；用户实际运行的结果会作为“本次模型”行单独追加。',
+        source: '论文引用：ViDiHand Table 1；MINT：sota-fixed-v1 50%',
+        note: 'InterWild 至 ViDiHand 的固定方法行和数值直接引用自 ViDiHand 论文，未由本项目重新实测或修改。MINT 两行为本项目本地固定记录，与论文不是同一 split。ViDiHand 使用了 ARCTIC 训练，其论文指标仅供同域参考，不具备跨数据集泛化意义；用户实际运行的结果会作为“本次模型”行单独追加。',
         columns: VIDIHAND_COLUMNS,
         rows: VIDIHAND_ARCTIC_ROWS,
         liveRows: [
@@ -540,8 +548,8 @@ const BENCHMARK_SUITES = Object.freeze({
       {
         id: 'vidihand-hot3d',
         title: 'HOT3D',
-        source: '引用：ViDiHand 论文 Table 1 · coverage-aware §4.1',
-        note: '表内固定方法行和数值全部直接引用自 ViDiHand 论文，未由本项目重新实测或修改。ViDiHand 使用了 HOT3D 训练，其论文指标仅供同域参考，不具备跨数据集泛化意义；用户实际运行的结果会作为“本次模型”行单独追加。',
+        source: '论文引用：ViDiHand Table 1；MINT：sota-fixed-v1 50%',
+        note: 'InterWild 至 ViDiHand 的固定方法行和数值直接引用自 ViDiHand 论文，未由本项目重新实测或修改。MINT 两行为本项目本地固定记录，与论文不是同一 split。ViDiHand 使用了 HOT3D 训练，其论文指标仅供同域参考，不具备跨数据集泛化意义；用户实际运行的结果会作为“本次模型”行单独追加。',
         columns: VIDIHAND_COLUMNS,
         rows: VIDIHAND_HOT3D_ROWS,
         liveRows: [

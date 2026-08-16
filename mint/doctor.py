@@ -27,7 +27,11 @@ def _module(name: str, required: bool = True) -> Check:
     found = importlib.util.find_spec(name) is not None
     version = "not installed"
     if found:
-        distribution = {"cv2": "opencv-python-headless", "yaml": "PyYAML"}.get(name, name)
+        distribution = {
+            "cv2": "opencv-python-headless",
+            "pinocchio": "pin",
+            "yaml": "PyYAML",
+        }.get(name, name)
         try:
             version = importlib.metadata.version(distribution)
         except importlib.metadata.PackageNotFoundError:
@@ -68,6 +72,9 @@ def run_checks(profile: str) -> list[Check]:
             _module("decord"),
             _module("einops"),
             _module("huggingface_hub"),
+            _module("mujoco"),
+            _module("nlopt"),
+            _module("pinocchio"),
             _module("pyarrow"),
             _module("safetensors"),
             _module("tqdm"),
@@ -79,6 +86,21 @@ def run_checks(profile: str) -> list[Check]:
         right = right if right.is_file() else hawor_data / "data" / "mano" / "MANO_RIGHT.pkl"
         left = left if left.is_file() else hawor_data / "data_left" / "mano_left" / "MANO_LEFT.pkl"
         checks.append(Check("MANO assets", right.is_file() and left.is_file(), "licensed files", False))
+        wuji_body = (
+            PROJECT_DIR / "eval" / "simulate" / "wuji-retargeting" / "wuji_retargeting"
+            / "wuji-description" / "hand" / "body"
+        )
+        wuji_core = [
+            wuji_body / kind / f"{side}.{extension}"
+            for kind, extension in (("urdf", "urdf"), ("mjcf", "xml"))
+            for side in ("left", "right")
+        ]
+        wuji_meshes = list((wuji_body / "meshes").glob("*/*.STL"))
+        checks.append(Check(
+            "Wuji retargeting assets",
+            all(path.is_file() for path in wuji_core) and len(wuji_meshes) == 52,
+            f"{len(wuji_meshes)} STL meshes",
+        ))
     if profile in {"train", "full"}:
         checks.extend([_module("accelerate"), _module("decord"), _module("pyarrow")])
     if profile in {"data", "full"}:
