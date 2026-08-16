@@ -2,25 +2,24 @@
 
 [中文说明](README_ZH.md)
 
-MINT is an open toolkit for egocentric camera-and-hand inference, model
-training, model-effect visualization, and benchmarking. The public repository
-also exposes reusable Ray orchestration, data-flow, cleaning, and LeRobot export
-components, but it is not a complete redistributable copy of the production
-data-generation pipeline.
+MINT enables everyone to skip complex engineering setup and optimization and
+directly produce usable egocentric (Ego) data at scale. Its goal is to accelerate
+the training and validation of Ego-data models and advance Ego data and its
+applications.
 
-The public Git repository includes a sub-20 MB Hot3D LeRobot v3 sample
-and the benchmark implementation. It excludes full datasets, model checkpoints,
-MANO assets, credentials, and private infrastructure settings. Benchmark data,
-optional dependencies, and local or cloud runtime setup are user-managed. The public MINT
-model is hosted on Hugging Face and ModelScope and is downloaded only into
-a local Git-ignored directory.
+This repository contains training and inference code for the Ego reconstruction
+model, as well as the Ego data-production pipeline used to prepare its training
+data. If your goal is to produce large volumes of Ego data quickly, you can
+download our released checkpoint and use the inference code without training
+from scratch. A ready-to-run sample is included; see
+[Quick Start: Web Viewer](#quick-start-web-viewer) for details.
 
 ## Quick Start: Web Viewer
 
 The Web Viewer is the primary MINT entry point. It lets you select a checkpoint,
-load the MINT model, run inference on a LeRobot episode, and inspect GT/prediction
-overlays, camera trajectories, hand motion, frame metrics, and benchmark results
-in one interface.
+load the MINT model, run inference on a LeRobot episode or an egocentric MP4
+video, and inspect GT/prediction overlays, camera trajectories, hand motion,
+frame metrics, and benchmark results in one interface.
 
 **Hardware requirement: MINT model inference requires an NVIDIA GPU with at
 least 24 GB of VRAM.**
@@ -46,22 +45,50 @@ python -m mint doctor --profile inference
 python -m mint viewer
 ```
 
-The project cannot download or redistribute MANO automatically because its
-license must be accepted by each user. Before launching the Viewer, verify that
-these files exist:
+### Model and asset locations
 
-```text
-assets/mano/mano_right/MANO_RIGHT.pkl
-assets/mano/mano_left/MANO_LEFT.pkl
-```
+Place the models and assets used by Quick Start at the paths below.
+`scripts/download_assets.sh` downloads the public MINT checkpoint automatically;
+MANO must be downloaded from its official website and copied manually.
 
-The Viewer automatically opens `http://127.0.0.1:8011` in the default browser. Then:
+| Model or asset | Download source | Path in this repository | Notes |
+| --- | --- | --- | --- |
+| MINT checkpoint | [ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) or [Hugging Face](https://huggingface.co/ZZJAsher/mint_v1) | `checkpoints/model.safetensors` | The download script places and verifies it automatically; use the same path for a manual download. |
+| MANO left- and right-hand models | [MANO website](https://mano.is.tue.mpg.de/) | `assets/mano/mano_right/MANO_RIGHT.pkl`<br>`assets/mano/mano_left/MANO_LEFT.pkl` | Registration and acceptance of the MANO License are required. |
+| LingBot-Map pretrained backbone | [LingBot-Map](https://github.com/robbyant/lingbot-map) | `assets/models/lingbot-map.pt` | Optional; download only when required by the selected configuration. |
+| Wuji Hand URDF, MJCF, and STL | Included in this repository | `eval/simulate/wuji-retargeting/wuji_retargeting/wuji-description/hand/body/` | No additional download is required. |
 
-1. In **Model and Sample**, keep `checkpoints/model.safetensors` or select another compatible checkpoint.
+To reconstruct the Ego data-production pipeline, download the required weights
+under the terms of each upstream project and place them at these fixed paths:
+
+| Data-pipeline asset | Path in this repository |
+| --- | --- |
+| GeoCalib weights | `model/geocalib/pinhole.tar` |
+| MoGe weights | `model/moge2/model.pt` |
+| Mega-SAM weights | `model/megasam/megasam_final.pth` |
+| HaWoR weights | `model/hawor/hawor.ckpt` |
+| HaWoR configuration | `model/hawor/model_config.yaml` |
+| HaWoR detector | `model/hawor/detector.pt` |
+| DROID-SLAM weights | `third_party/HaWoR/weights/external/droid.pth` |
+| Metric3D weights | `third_party/HaWoR/thirdparty/Metric3D/weights/metric_depth_vit_large_800k.pth` |
+| HaWoR right-hand MANO | `third_party/HaWoR/_DATA/data/mano/MANO_RIGHT.pkl` |
+| HaWoR left-hand MANO | `third_party/HaWoR/_DATA/data_left/mano_left/MANO_LEFT.pkl` |
+
+Benchmark data has no required in-repository location. At runtime, use
+`--data-root /path/to/benchmark-data` to select the downloaded and organized
+HOT3D, ARCTIC, or other benchmark datasets.
+
+The Viewer automatically opens `http://127.0.0.1:8011` in the default browser.
+Then:
+
+1. In **Model and Sample**, keep `checkpoints/model.safetensors` or select
+   another compatible checkpoint.
 2. Click **Load Model** and wait until the model status is ready.
-3. Select a LeRobot episode and choose the camera, hand-window, and geometry settings.
+3. Select a LeRobot episode or an egocentric MP4 video, then choose the
+   camera-inference, hand-window, and geometry settings.
 4. Click **Start Inference**.
-5. Inspect the synchronized GT/Pred 2D view, fixed-world and camera-frame 3D panels, per-frame values, losses, exports, and optional benchmark tools.
+5. Inspect the synchronized GT/Pred 2D view, fixed-world and camera-frame 3D
+   panels, per-frame values, losses, exports, and optional benchmark tools.
 
 ![MINT Web Viewer after loading the model and running inference](data/samples/mint-web-viewer.png)
 
@@ -76,9 +103,9 @@ The Viewer automatically opens `http://127.0.0.1:8011` in the default browser. T
 | Audit | `python -m mint doctor` | Verify the environment, optional backends, assets, and GPU runtime. |
 
 The Viewer opens automatically after startup. Model and checkpoint selection,
-sample and LeRobot episode browsing, model loading, inference, GT/prediction
-comparison, 2D/3D visualization, frame values and losses, exports, and
-Benchmark operations are all available directly in the Viewer panel. No
+LeRobot episode or egocentric MP4 video browsing, model loading, inference,
+GT/prediction comparison, 2D/3D visualization, frame values and losses, exports,
+and Benchmark operations are all available directly in the Viewer panel. No
 additional command-line visualization step is required.
 
 ## Installation Profiles and Viewer Options
@@ -121,31 +148,53 @@ Only after completing that local integration should the data-profile doctor and
 
 ### Train
 
-Only the two configurations associated with the selected checkpoints are kept. `step_00019000` is Stage 1; `step_00004500` is the Stage 2 WorldEngine camera-only adaptation initialized from Stage 1:
+Only the two configurations associated with the selected checkpoints are kept.
+`step_00019000` is Stage 1; `step_00004500` is the Stage 2 WorldEngine
+camera-only adaptation initialized from Stage 1 and is the final fine-tuned
+checkpoint released publicly:
 
 ```bash
-python -m mint train --config configs/training/mint_step1.yaml --inspect
 python -m mint train --config configs/training/mint_step1.yaml
 
-python -m mint train --config configs/training/mint_step2.yaml --inspect
 python -m mint train --config configs/training/mint_step2.yaml
 ```
 
 The Stage 2 `train.init_from` points to the Stage 1
-`step_00019000/model.safetensors`. `--inspect` constructs the model without
-loading a dataset and is the recommended first configuration check.
+`step_00019000/model.safetensors`.
 
 `mint train` consumes a compatible, separately prepared LeRobot dataset and
 writes training checkpoints. After training, select the new checkpoint directly
 in the Viewer panel for interactive inspection.
 
-## LeRobot sample
+## Public Ego pretraining data
+
+We provide the non-video portions of the `ego4d`, `egodex`, and `epickitchen`
+data processed by this repository's Ego data-production pipeline. Download them
+from either platform:
+
+- [Hugging Face: ZZJAsher/wuji_ego_mint](https://huggingface.co/datasets/ZZJAsher/wuji_ego_mint)
+- [ModelScope: AsherZhu/wuji_ego_mint](https://www.modelscope.cn/datasets/AsherZhu/wuji_ego_mint)
+
+**Important: the camera trajectories in this data were generated by this
+repository's Ego data pipeline and currently exhibit obvious scale enlargement.
+We recommend using the data only to pretrain this project's Ego hand
+reconstruction model. Do not use it for real-scale evaluation, precise camera
+trajectory evaluation, or as real-scale ground truth.**
+
+The public dataset does not include `.mp4` videos. The source videos belong to
+Ego4D, EgoDex, and EPIC-KITCHENS and are governed by their respective dataset
+licenses and access terms, so this project cannot redistribute them. Users who
+need the videos must apply for and download them through the corresponding
+official dataset channels and verify their own usage and redistribution rights.
+
+## LeRobot sample and privacy
 
 `data/samples/lerobot_v3/` is the only bundled sample. It takes the two middle
 entries after sorting the Hot3D sequence exports and crops the centered 15
 seconds from each, producing a valid two-episode, 900-frame LeRobot v3 dataset
-with synchronized video, camera/hand labels, task text, and episode metadata.
-Participant IDs and original sequence names are not stored in the sample.
+under 20 MB with synchronized video, Hot3D camera/two-hand labels, task text,
+and episode metadata. Participant IDs and original sequence names are not
+stored in the sample.
 
 Rebuild it from local full exports with:
 
@@ -157,12 +206,14 @@ python scripts/build_sample_lerobot.py \
 
 Dataset access does not itself grant redistribution rights. The publisher must
 still confirm licensing, participant consent, and frame-by-frame privacy review.
+See [Privacy](docs/privacy.md) for details.
 
 ## Benchmark
 
 The complete implementation and tests live in `eval/model_effect/benchmark/`
-and are integrated into the Viewer's Benchmark panel. Users provide datasets
-and install the optional runtime themselves; the CLI remains available:
+and are integrated into the Viewer's Benchmark panel. Before use, download
+HOT3D and ARCTIC, organize the benchmark data as required by each adapter, and
+install the optional runtime. The CLI remains available:
 
 **Benchmark integrity statement.** We commit that every metric reported by this
 project is an authentic result produced under the stated evaluation protocol;
@@ -238,3 +289,9 @@ wuji-ego-mint's original code is released under the MIT License. Upstream models
 datasets, MANO assets, vendored LingBot-Map files, and optional research
 backends retain their own licenses. Review [Third-party notices](THIRD_PARTY_NOTICES.md)
 before distribution.
+
+## Contact
+
+If you encounter any issues with installation, data generation, model training,
+inference, or the Viewer, please contact Zijie Zhu. WeChat: `z3132544408`;
+email: `3132544408@qq.com`.
