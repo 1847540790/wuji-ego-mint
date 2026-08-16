@@ -25,17 +25,34 @@ in one interface.
 **Hardware requirement: MINT model inference requires an NVIDIA GPU with at
 least 24 GB of VRAM.**
 
-Install the inference environment, download the public MINT model, and launch
-the Viewer:
+Install the inference environment and download the public MINT model. The Viewer
+also requires the separately licensed MANO hand models. Create an account on the
+[official MANO website](https://mano.is.tue.mpg.de/), accept the MANO license,
+and download the MANO release before running the asset check below.
 
 ```bash
-git clone git@github.com:1847540790/wuji-ego-mint.git
+git clone https://github.com/wuji-technology/wuji-ego-mint.git
 cd wuji-ego-mint
 bash scripts/create_env.sh inference
 conda activate mint-inference
 bash scripts/download_assets.sh
+
+# Copy the MANO files from the downloaded release into the project.
+mkdir -p assets/mano/mano_right assets/mano/mano_left
+cp /path/to/MANO_RIGHT.pkl assets/mano/mano_right/MANO_RIGHT.pkl
+cp /path/to/MANO_LEFT.pkl assets/mano/mano_left/MANO_LEFT.pkl
+
 python -m mint doctor --profile inference
 python -m mint viewer
+```
+
+The project cannot download or redistribute MANO automatically because its
+license must be accepted by each user. Before launching the Viewer, verify that
+these files exist:
+
+```text
+assets/mano/mano_right/MANO_RIGHT.pkl
+assets/mano/mano_left/MANO_LEFT.pkl
 ```
 
 The Viewer automatically opens `http://127.0.0.1:8011` in the default browser. Then:
