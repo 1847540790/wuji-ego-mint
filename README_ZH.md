@@ -8,7 +8,7 @@ MINT 致力于让每个人都能跳过复杂的工程搭建与优化步骤，直
 
 ## 快速开始：Web Viewer
 
-Web Viewer 是 MINT 的主要入口，可以在一个界面中选择 checkpoint、加载 MINT 模型、对 LeRobot episode 运行推理，并查看 GT/预测叠加、相机轨迹、手部运动、逐帧指标和 benchmark 结果。
+Web Viewer 是 MINT 的主要入口，可以在一个界面中选择 checkpoint、加载 MINT 模型、对 LeRobot episode 或 Ego 视角的 MP4 视频运行推理，并查看 GT/预测叠加、相机轨迹、手部运动、逐帧指标和 benchmark 结果。
 
 **硬件要求：MINT 模型推理需要 NVIDIA GPU，显存至少为 24 GB。**
 
@@ -63,7 +63,7 @@ Viewer 启动后会自动在默认浏览器打开 `http://127.0.0.1:8011`，然�
 
 1. 在 **模型与样本** 中保留 `checkpoints/model.safetensors`，或者选择其他兼容 checkpoint。
 2. 点击 **加载模型**，等待模型状态变为就绪。
-3. 选择 LeRobot episode，并设置相机推理、手部拼窗和几何参数。
+3. 选择 LeRobot episode 或 Ego 视角的 MP4 视频，并设置相机推理、手部拼窗和几何参数。
 4. 点击 **开始推理**。
 5. 查看同步的 GT/Pred 2D、固定世界和当前相机 3D、逐帧数值、loss、导出及可选 benchmark 工具。
 
@@ -79,7 +79,7 @@ Viewer 启动后会自动在默认浏览器打开 `http://127.0.0.1:8011`，然�
 | 模型评测 | `python eval/model_effect/benchmark/run.py` | 运行开源 benchmark CLI；数据集和运行环境由使用者配置。 |
 | 环境检查 | `python -m mint doctor` | 检查依赖、可选后端、模型资产和运行环境。 |
 
-Viewer 启动后会自动打开浏览器。模型与 checkpoint 选择、样本和 LeRobot episode 浏览、模型加载、推理、GT/Pred 对比、2D/3D 可视化、逐帧数值与 loss、结果导出以及 Benchmark 均可直接在 Viewer 面板中完成，无需额外的命令行可视化步骤。
+Viewer 启动后会自动打开浏览器。模型与 checkpoint 选择、LeRobot episode 或 Ego 视角 MP4 视频浏览、模型加载、推理、GT/Pred 对比、2D/3D 可视化、逐帧数值与 loss、结果导出以及 Benchmark 均可直接在 Viewer 面板中完成，无需额外的命令行可视化步骤。
 
 ## 安装配置与 Viewer 选项
 
