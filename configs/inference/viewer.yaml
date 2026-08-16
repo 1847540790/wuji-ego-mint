@@ -1,7 +1,7 @@
 samples: data/samples
 artifacts: artifacts/viewer
 model:
-  config: configs/training/lingbotmap_base.yaml
+  config: configs/training/stage2_resume_worldengine_camera_only.yaml
   checkpoint: checkpoints/model.safetensors
   devices: auto
 inference:

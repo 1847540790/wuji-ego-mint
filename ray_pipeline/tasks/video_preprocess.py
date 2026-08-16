@@ -54,9 +54,13 @@ def _plan_clips(fps: float, total_frames: int, out_dir: Path,
 @ray.remote
 def preprocess_meta(video_path: str, output_dir: str,
                     input_root: str | None = None) -> dict:
-    from steps.cpu.video_io import get_video_info_step
-    from modules.long_video    import LONG_VIDEO_THRESHOLD_S, CLIP_DURATION_S, CLIP_OVERLAP_S
+    from ray_pipeline.backends.long_video import (
+        CLIP_DURATION_S,
+        CLIP_OVERLAP_S,
+        LONG_VIDEO_THRESHOLD_S,
+    )
     from manifest.scanner import scene_key
+    from steps.cpu.video_io import get_video_info_step
 
     t0 = time.perf_counter()
     scene_name = scene_key(video_path, input_root)

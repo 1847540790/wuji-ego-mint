@@ -11,6 +11,12 @@ tests/
 tests/*
 !tests/__init__.py
 !tests/test_inference_acceleration.py
+!eval/model_effect/benchmark/tests/
+!eval/model_effect/benchmark/tests/**
+!eval/model_effect/benchmark/dist/aliyun/tests/
+!eval/model_effect/benchmark/dist/aliyun/tests/**
+**/__pycache__/
+*.py[cod]
 
 # Environments and editors
 .env
@@ -31,14 +37,27 @@ weights/
 assets/mano/
 assets/models/
 assets/robot_hand/
-third_party/*/
-!third_party/README.md
-!third_party/manifest.yaml
+# The local infra copy contains MINT-specific changes, while HaWoR is ND-licensed.
+# Keep it available for authorized internal use but out of source distributions.
+third_party/HaWoR/
+third_party/**/.git/
+third_party/**/__pycache__/
+third_party/**/.cache/
+third_party/**/build/
+third_party/**/dist/
+third_party/**/*.egg-info/
+third_party/**/*.ipynb
+third_party/**/*.so
+third_party/**/*.o
 
 # Samples are added only after the privacy and license review.
 data/samples/*
 !data/samples/README.md
 !data/samples/manifest.example.json
+!data/samples/release-manifest.json
+!data/samples/mint-web-viewer.png
+!data/samples/lerobot_v3/
+!data/samples/lerobot_v3/**
 
 # Credentials and common model artifacts
 *.key

@@ -3,23 +3,23 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROFILE="${1:-full}"
-TORCH_INDEX_URL="${MINT_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
-PYPI_INDEX_URL="${MINT_PYPI_INDEX_URL:-https://pypi.mirrors.ustc.edu.cn/simple}"
-NUMPY_INDEX_URL="${MINT_NUMPY_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+PYPI_INDEX_URL="${MINT_PYPI_INDEX_URL:-https://mirrors.ustc.edu.cn/pypi/simple/}"
+NUMPY_INDEX_URL="${MINT_NUMPY_INDEX_URL:-$PYPI_INDEX_URL}"
+TORCH_INDEX_URL="${MINT_TORCH_INDEX_URL:-$PYPI_INDEX_URL}"
 CONDA_FALLBACK_CHANNELS="${MINT_CONDA_FALLBACK_CHANNELS:-https://conda.anaconda.org/conda-forge}"
 PIP_NETWORK_ARGS=(--retries 10 --timeout 120)
 PYPI_SOURCE_ARGS=(--index-url "$PYPI_INDEX_URL")
-TORCH_SOURCE_ARGS=(--extra-index-url "$TORCH_INDEX_URL")
+TORCH_REQUIREMENTS="$PROJECT_DIR/environments/requirements-torch.txt"
+TORCH_SOURCE_ARGS=(--index-url "$TORCH_INDEX_URL")
 if [[ -n "${MINT_TORCH_FIND_LINKS:-}" ]]; then
-  TORCH_SOURCE_ARGS=(--find-links "$MINT_TORCH_FIND_LINKS")
+  TORCH_SOURCE_ARGS=(--index-url "$PYPI_INDEX_URL" --find-links "$MINT_TORCH_FIND_LINKS")
 fi
 
 case "$PROFILE" in
   full)
     ENV_NAME="mint"
     ENV_FILE="$PROJECT_DIR/environments/mint.yml"
-    REQUIREMENTS=(
-      requirements-inference.txt
+    EXTRA_REQUIREMENTS=(
       requirements-train.txt
       requirements-data.txt
       requirements-dev.txt
@@ -29,7 +29,7 @@ case "$PROFILE" in
   inference)
     ENV_NAME="mint-inference"
     ENV_FILE="$PROJECT_DIR/environments/mint-inference.yml"
-    REQUIREMENTS=(requirements-inference.txt)
+    EXTRA_REQUIREMENTS=()
     DOCTOR_PROFILE="inference"
     ;;
   *)
@@ -81,6 +81,8 @@ create_environment() {
     echo "[1/5] Skipping system Conda channels because a blocked TUNA or HIT source is configured"
   else
     echo "[1/5] Creating '$ENV_NAME' with the system Conda channels (Conda progress follows)"
+    echo "      First-time metadata retrieval and dependency solving may take several minutes."
+    echo "      If Conda stays at 'Collecting package metadata (repodata.json)', it is still working."
     if conda env create "${create_args[@]}"; then
       return 0
     fi
@@ -104,6 +106,7 @@ create_environment() {
 
   for channel in "${fallback_channels[@]}"; do
     echo "Retrying Conda environment creation with: $channel" >&2
+    echo "Metadata retrieval and dependency solving may again take several minutes." >&2
     if conda create --yes --verbose --prefix "$ENV_PREFIX" \
       --override-channels --channel "$channel" --strict-channel-priority \
       --no-default-packages --show-channel-urls --file "$TEMP_CONDA_SPECS"; then
@@ -118,14 +121,7 @@ create_environment() {
 }
 
 if conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
-  if [[ "$PROFILE" == "inference" ]]; then
-    echo "[1/5] Reusing existing '$ENV_NAME' environment and resuming package installation"
-  else
-    echo "Conda environment '$ENV_NAME' already exists." >&2
-    echo "Remove it explicitly before requesting a clean rebuild:" >&2
-    echo "  conda env remove --name $ENV_NAME" >&2
-    exit 1
-  fi
+  echo "[1/5] Reusing existing '$ENV_NAME' environment and resuming package installation"
 else
   if [[ -e "$ENV_PREFIX" ]]; then
     echo "[1/5] Replacing an incomplete Conda prefix at the target environment location"
@@ -133,22 +129,31 @@ else
   create_environment
 fi
 
-echo "[2/5] Installing $NUMPY_SPEC from the dedicated NumPy index"
+echo "[2/5] Installing the shared inference foundation"
+echo "      NumPy source: $NUMPY_INDEX_URL"
 conda run --no-capture-output --name "$ENV_NAME" python -m pip install \
   --progress-bar on --only-binary=:all: --no-deps \
   "${PIP_NETWORK_ARGS[@]}" --index-url "$NUMPY_INDEX_URL" "$NUMPY_SPEC"
 
-echo "[2/5] Installing the tested CUDA-enabled PyTorch build (large CUDA wheels)"
+echo "      PyTorch source: $TORCH_INDEX_URL"
 conda run --no-capture-output --name "$ENV_NAME" python -m pip install \
   --progress-bar on \
-  "${PIP_NETWORK_ARGS[@]}" "${PYPI_SOURCE_ARGS[@]}" "${TORCH_SOURCE_ARGS[@]}" \
-  --requirement "$PROJECT_DIR/environments/requirements-torch.txt"
+  "${PIP_NETWORK_ARGS[@]}" "${TORCH_SOURCE_ARGS[@]}" \
+  --requirement "$TORCH_REQUIREMENTS"
 
-for requirement in "${REQUIREMENTS[@]}"; do
-  echo "[3/5] Installing $requirement"
+echo "      Inference dependency source: $PYPI_INDEX_URL"
+conda run --no-capture-output --name "$ENV_NAME" python -m pip install \
+  --progress-bar on \
+  "${PIP_NETWORK_ARGS[@]}" "${PYPI_SOURCE_ARGS[@]}" \
+  --requirement "$PROJECT_DIR/environments/requirements-inference.txt"
+
+for requirement in "${EXTRA_REQUIREMENTS[@]}"; do
+  echo "[3/5] Installing $requirement without replacing the shared inference foundation"
   conda run --no-capture-output --name "$ENV_NAME" python -m pip install \
     --progress-bar on \
     "${PIP_NETWORK_ARGS[@]}" "${PYPI_SOURCE_ARGS[@]}" \
+    --constraint "$PROJECT_DIR/environments/requirements-torch.txt" \
+    --constraint "$PROJECT_DIR/environments/requirements-inference.txt" \
     --requirement "$PROJECT_DIR/environments/$requirement"
 done
 

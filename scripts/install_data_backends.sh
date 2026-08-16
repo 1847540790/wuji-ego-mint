@@ -11,11 +11,14 @@ if ! conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
 fi
 
 cat <<'NOTICE'
-MINT will download optional research software from its original repositories.
+MINT bundles GeoCalib, MoGe, and Mega-SAM source under third_party/. The local
+HaWoR source must be supplied separately because this project's adapted copy
+cannot be redistributed under HaWoR's NoDerivatives terms. No model weights or
+separately licensed assets are bundled.
 
-HaWoR and its checkpoints have restrictive terms, and MANO requires a separate
-license agreement. Continue only if your use and redistribution plan complies
-with every upstream license. Downloaded repositories remain gitignored.
+HaWoR is CC BY-NC-ND 4.0: commercial use and redistribution of modifications
+require separate permission. MANO requires a separate license agreement.
+Continue only if your use complies with every upstream license.
 NOTICE
 read -r -p "Type 'I AGREE' to continue: " ACCEPTED
 if [[ "$ACCEPTED" != "I AGREE" ]]; then
@@ -23,34 +26,26 @@ if [[ "$ACCEPTED" != "I AGREE" ]]; then
   exit 1
 fi
 
-clone_component() {
+require_component() {
   local name="$1"
-  local url="$2"
-  local revision="$3"
   local destination="$THIRD_PARTY_DIR/$name"
-  if [[ -d "$destination/.git" ]]; then
-    echo "$name already exists; leaving the checkout unchanged."
-    return
-  fi
-  if [[ -e "$destination" ]]; then
-    echo "Refusing to overwrite non-git path: $destination" >&2
+  if [[ ! -d "$destination" ]]; then
+    echo "Bundled source is missing: $destination" >&2
     exit 1
   fi
-  git clone --filter=blob:none "$url" "$destination"
-  git -C "$destination" checkout "$revision"
 }
 
-clone_component GeoCalib https://github.com/cvg/GeoCalib.git main
-clone_component MoGe https://github.com/microsoft/MoGe.git main
-clone_component mega-sam https://github.com/mega-sam/mega-sam.git main
-clone_component HaWoR https://github.com/ThunderVVV/HaWoR.git main
+require_component GeoCalib
+require_component MoGe
+require_component mega-sam
+require_component HaWoR
 
 conda run --name "$ENV_NAME" python -m pip install --no-deps --editable "$THIRD_PARTY_DIR/GeoCalib"
 conda run --name "$ENV_NAME" python -m pip install --no-deps --editable "$THIRD_PARTY_DIR/MoGe"
 
 cat <<'NEXT'
 
-Source backends are installed. Model assets are intentionally not downloaded.
+Bundled source backends are registered. Model assets are intentionally absent.
 Follow docs/installation.md to place each checkpoint and the licensed MANO
 files, then run:
 

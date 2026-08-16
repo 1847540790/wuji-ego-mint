@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "format": "LeRobot v3",
+  "episodes": [
+    {
+      "episode_index": 0,
+      "source": "hot3d",
+      "source_dataset_index": 44,
+      "source_frame_start": 1562,
+      "source_frame_stop": 2012,
+      "frames": 450,
+      "video": "videos/observation.images.ego/chunk-000/file-000.mp4",
+      "sha256": "f11a16ff54f25ca0408023160f4f39dad2913604a6d82443fb2995a7ae414b4d"
+    },
+    {
+      "episode_index": 1,
+      "source": "hot3d",
+      "source_dataset_index": 45,
+      "source_frame_start": 1711,
+      "source_frame_stop": 2161,
+      "frames": 450,
+      "video": "videos/observation.images.ego/chunk-000/file-001.mp4",
+      "sha256": "e40979490bca355a275bfd7f358a9367df8885c808f24b2e95bb50c97149223a"
+    }
+  ],
+  "total_frames": 900,
+  "total_bytes_excluding_manifest": 5905099
+}

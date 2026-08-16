@@ -1,20 +1,24 @@
-# Approved sample clips
+# LeRobot sample
 
-No dataset video is committed by default. Add only short clips that have passed
-both a redistribution-license review and a frame-by-frame privacy review.
+`lerobot_v3/` is the only bundled sample. It is a compact, valid LeRobot v3
+dataset containing two centered 15-second clips from the middle of the sorted
+Hot3D sequence exports. The episodes retain their per-frame camera and hand
+labels, task text, and synchronized H.264 video.
 
-Supported formats are MP4, MOV, AVI, MKV, and WebM. The viewer recursively
-indexes this directory but never exposes paths outside it.
+The sample is intended to exercise the same GT-versus-prediction viewer used
+for full Hot3D datasets. It contains 900 frames at 30 fps and is kept below
+20 MB. Anonymous source collection indices and centered frame ranges are
+recorded in `lerobot_v3/sample_manifest.json`.
 
-Recommended public filenames:
+The legacy standalone sample MP4 files are intentionally not included. To
+rebuild this sample from locally available source exports, run:
 
-```text
-ego4d-kitchen-01.mp4
-epic-kitchens-01.mp4
-egodex-01.mp4
+```bash
+python scripts/build_sample_lerobot.py \
+  --source-root /path/to/hot3d_to_lerobot \
+  --output data/samples/lerobot_v3
 ```
 
-Names must not contain original participant IDs, UUIDs, usernames, timestamps,
-machine names, or internal dataset paths. Keep the completed review manifest
-next to the videos.
-
+Redistribution approval and privacy review remain the responsibility of the
+publisher. Do not add source participant IDs, usernames, machine paths, or
+other private metadata to this directory.

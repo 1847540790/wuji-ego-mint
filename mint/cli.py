@@ -50,9 +50,7 @@ def main(argv: list[str] | None = None) -> int:
 
         return inference_main(remainder)
     if command == "viewer":
-        from .viewer.app import viewer_main
-
-        return viewer_main(remainder)
+        return _run_script("eval/model_effect/visualization/viewer_web.py", remainder)
     from .doctor import doctor_main
 
     return doctor_main(remainder)

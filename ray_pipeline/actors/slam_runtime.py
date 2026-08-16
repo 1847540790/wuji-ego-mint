@@ -39,40 +39,34 @@ def _slam_weights_path() -> str:
 
 
 def _build_droid_net_cpu_without_megasam(weights: str):
-    """Load DroidNet on CPU without importing modules.megasam, so cwd is untouched."""
+    """Load DroidNet on CPU without importing the MegaSAM backend."""
     import importlib
     import sys
-    import torch
     from collections import OrderedDict as _OD
+
+    import torch
 
     root = Path(__file__).resolve().parents[2]
     megasam_root = root / 'third_party' / 'mega-sam'
-    root_s = str(root)
-    if root_s in sys.path:
-        sys.path.remove(root_s)
-    sys.path.insert(0, root_s)
+    droid_slam_path = megasam_root / 'base' / 'droid_slam'
+    for path in (root, megasam_root / 'UniDepth', droid_slam_path):
+        path_s = str(path)
+        if path_s in sys.path:
+            sys.path.remove(path_s)
+        sys.path.insert(0, path_s)
 
     modules_pkg = sys.modules.get('modules')
-    expected_modules_dir = (root / 'modules').resolve()
-    loaded_from = Path(getattr(modules_pkg, '__file__', '') or '/').resolve()
-    if modules_pkg is not None and expected_modules_dir not in loaded_from.parents:
+    expected_modules_dir = (droid_slam_path / 'modules').resolve()
+    loaded_paths = (
+        {Path(path).resolve() for path in getattr(modules_pkg, '__path__', ())}
+        if modules_pkg is not None
+        else set()
+    )
+    if modules_pkg is not None and expected_modules_dir not in loaded_paths:
         for name in list(sys.modules):
             if name == 'modules' or name.startswith('modules.'):
                 sys.modules.pop(name, None)
-        modules_pkg = None
-    if modules_pkg is None:
-        modules_pkg = importlib.import_module('modules')
-
-    droid_slam_path = megasam_root / 'base' / 'droid_slam'
-    for path in (droid_slam_path, megasam_root / 'UniDepth'):
-        path_s = str(path)
-        if path_s not in sys.path:
-            sys.path.insert(1, path_s)
-
-    droid_modules_dir = str(megasam_root / 'base' / 'droid_slam' / 'modules')
-    if modules_pkg is not None and hasattr(modules_pkg, '__path__'):
-        if droid_modules_dir not in modules_pkg.__path__:
-            modules_pkg.__path__.append(droid_modules_dir)
+    importlib.import_module('modules')
 
     from droid_net import DroidNet as _DroidNet
     net = _DroidNet()
@@ -215,7 +209,7 @@ def _adopt_slam_cpu_prewarm(owner, weights: str) -> None:
     if net is None:
         return
     try:
-        from modules import megasam as _megasam
+        from ray_pipeline.backends import megasam as _megasam
         if weights not in _megasam._DROID_NET_CACHE:
             _megasam._DROID_NET_CPU_CACHE[weights] = net
         owner._slam_cpu_net = None
@@ -233,7 +227,7 @@ def ensure_slam_model_loaded(owner) -> None:
     print(f'[pipeline]  {gpu}.')
     weights = _slam_weights_path()
     cwd = os.getcwd()
-    from modules.megasam import _get_droid_net
+    from ray_pipeline.backends.megasam import _get_droid_net
     try:
         os.chdir(cwd)
     except Exception:
@@ -249,7 +243,7 @@ def offload_slam_model_cache(owner) -> None:
     """Move the cached DroidNet off GPU but keep it in process CPU cache."""
     gpu = getattr(owner, '_gpu', os.environ.get('CUDA_VISIBLE_DEVICES', '?'))
     try:
-        from modules.megasam import _DROID_NET_CACHE, _DROID_NET_CPU_CACHE
+        from ray_pipeline.backends.megasam import _DROID_NET_CACHE, _DROID_NET_CPU_CACHE
         for weights, net in list(_DROID_NET_CACHE.items()):
             move_to_cpu(net)
             _DROID_NET_CPU_CACHE[weights] = net
@@ -264,7 +258,7 @@ def cleanup_slam_model_cache(owner) -> None:
     """Release the process-local MegaSAM cache before this actor exits."""
     gpu = getattr(owner, '_gpu', os.environ.get('CUDA_VISIBLE_DEVICES', '?'))
     save_error: Exception | None = None
-    megasam_mod = sys.modules.get('modules.megasam')
+    megasam_mod = sys.modules.get('ray_pipeline.backends.megasam')
     if megasam_mod is not None:
         try:
             megasam_mod.wait_for_pending_saves()
@@ -302,7 +296,7 @@ def run_slam_item_once(
     delete_temp: bool = True,
 ) -> object | None:
     """Run exactly one SLAM item, for reversible idle stealing workers."""
-    from modules.hawor_no_filler import finalize_cam2world
+    from ray_pipeline.backends.hawor_no_filler import finalize_cam2world
     from steps.gpu.megasam import prefetch_megasam_alignment, run_megasam_step
 
     gpu = getattr(owner, '_gpu', os.environ.get('CUDA_VISIBLE_DEVICES', '?'))
@@ -457,7 +451,7 @@ def run_slam_loop(
     import concurrent.futures
     import threading
 
-    from modules.hawor_no_filler import finalize_cam2world
+    from ray_pipeline.backends.hawor_no_filler import finalize_cam2world
     from steps.gpu.megasam import prefetch_megasam_alignment, run_megasam_step
 
     gpu = getattr(owner, '_gpu', os.environ.get('CUDA_VISIBLE_DEVICES', '?'))

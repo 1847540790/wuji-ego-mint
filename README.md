@@ -1,68 +1,144 @@
 # wuji-ego-mint
 
-[English](README_EN.md)
+[中文说明](README_ZH.md)
 
-MINT 是一个面向第一视角视频的数据处理、相机与手部模型训练、推理和结果可视化工具包。项目将 Ray 数据管线与训练代码统一封装为稳定、可复现的命令行接口，便于研究者从零安装并快速验证。
+MINT is an open toolkit for egocentric video processing, camera-and-hand model
+training, model-effect visualization, and benchmarking. It packages the Ray data
+pipeline and training stack behind a small, reproducible command surface.
 
-公开 Git 仓库不会包含数据集、模型权重、MANO 资产、访问凭证、云平台启动脚本、私有路径或基础设施配置。公开学生模型托管于 Hugging Face 和 ModelScope，由下载脚本保存到本地忽略目录。
+The public Git repository includes a sub-20 MB Hot3D LeRobot v3 sample
+and the benchmark implementation. It excludes full datasets, model checkpoints,
+MANO assets, credentials, and private infrastructure settings. Benchmark data,
+optional dependencies, and local or cloud runtime setup are user-managed. The public MINT
+model is hosted on Hugging Face and ModelScope and is downloaded only into
+a local Git-ignored directory.
 
-## 功能范围
+## Quick Start: Web Viewer
 
-| 模块 | 命令 | 用途 |
-| --- | --- | --- |
-| 数据处理 | `python -m mint pipeline` | 使用 Ray 将视频转换为可训练的 LeRobot v3 数据集。 |
-| 模型训练 | `python -m mint train` | 使用 Accelerate/DDP 训练相机与手部学生模型。 |
-| 模型推理 | `python -m mint infer` | 对单个视频执行纯预测推理并导出渲染视频和数值结果。 |
-| 结果查看 | `python -m mint viewer` | 在简洁的本地 Web 界面中浏览已审核样例和预测结果。 |
-| 环境检查 | `python -m mint doctor` | 检查依赖、可选后端、模型资产和运行环境。 |
+The Web Viewer is the primary MINT entry point. It lets you select a checkpoint,
+load the MINT model, run inference on a LeRobot episode, and inspect GT/prediction
+overlays, camera trajectories, hand motion, frame metrics, and benchmark results
+in one interface.
 
-Viewer 不会读取或展示真值，也不能浏览配置样例目录之外的文件。这是项目明确的隐私与安全边界。
-
-## 安装
-
-MINT 使用 Python 3.10、PyTorch 2.8 和 CUDA 12.8。两个环境均通过独立配置从零求解，不会克隆任何已有 Conda 环境。
-环境脚本首先使用系统现有的 Conda channels；若系统配置包含已知不可用的清华或 HIT 源，则直接跳过。创建失败后，脚本会通过 `--override-channels` 严格隔离系统源，并依次尝试官方 conda-forge 和 USTC 镜像。回退阶段不会混入任何已配置源，也不会修改用户的全局 Conda 配置。
-
-### 完整训练与数据环境
+Install the inference environment, download the public MINT model, and launch
+the Viewer:
 
 ```bash
 git clone git@github.com:1847540790/wuji-ego-mint.git
 cd wuji-ego-mint
+bash scripts/create_env.sh inference
+conda activate mint-inference
+bash scripts/download_assets.sh
+python -m mint doctor --profile inference
+python -m mint viewer
+```
+
+Open `http://127.0.0.1:8011`, then:
+
+1. In **Model and Sample**, keep `checkpoints/model.safetensors` or select another compatible checkpoint.
+2. Click **Load Model** and wait until the model status is ready.
+3. Select a LeRobot episode and choose the camera, hand-window, and geometry settings.
+4. Click **Start Inference**.
+5. Inspect the synchronized GT/Pred 2D view, fixed-world and camera-frame 3D panels, per-frame values, losses, exports, and optional benchmark tools.
+
+![MINT Web Viewer after loading the model and running inference](data/samples/mint-web-viewer.png)
+
+For a remote server, forward the Viewer port before opening the same URL:
+
+```bash
+ssh -L 8011:127.0.0.1:8011 user@server
+```
+
+## What is included
+
+| Area | Entry point | Purpose |
+| --- | --- | --- |
+| Data | `python -m mint pipeline` | Process videos into training-ready LeRobot v3 datasets with Ray. |
+| Train | `python -m mint train` | Train the camera-and-hand MINT model with Accelerate/DDP. |
+| Infer and view | `python -m mint viewer` | Use the original model_effect web UI for LeRobot GT, predictions, 2D/3D trajectories, and frame metrics. |
+| Benchmark | `python eval/model_effect/benchmark/run.py` | Run the open benchmark CLI with user-provided data and environment. |
+| Headless infer | `python -m mint infer` | Export overlays and numeric results for scripts and batch jobs. |
+| Audit | `python -m mint doctor` | Verify the environment, optional backends, assets, and GPU runtime. |
+
+The viewer starts directly in `data/samples/lerobot_v3/` and retains the
+original directory browser and LeRobot ground-truth comparison workflow. Its
+Benchmark button can launch local-GPU or Aliyun evaluation, and the same
+benchmark remains available through the independent CLI.
+
+## Installation Profiles and Viewer Options
+
+MINT uses Python 3.10 and PyTorch 2.8 with CUDA 12.8. Both environments are
+resolved from clean specifications; no existing Conda environment is cloned.
+The environment script tries the system Conda channels first, unless their
+resolved configuration contains a known-blocked TUNA or HIT endpoint. If the
+system solve is skipped or fails, `--override-channels` strictly isolates the
+retry and uses only the official conda-forge channel. No configured channel can
+leak into the fallback, and global settings are never changed. The `full` and
+`inference` profiles install the exact same inference foundation. NumPy,
+PyTorch, and general Python packages use the USTC PyPI mirror by default; on
+Linux x86_64, the pinned PyTorch 2.8.0 package installs its CUDA 12.8 runtime
+dependencies. The full profile adds training, data, and development
+dependencies only after that shared layer is fixed.
+
+The viewer uses these project paths by default:
+
+- sample: `data/samples/lerobot_v3/`;
+- model: a training checkpoint discovered under `output/model_train/`, or `--ckpt`;
+- configuration: `configs/training/stage2_resume_worldengine_camera_only.yaml`;
+- cache: `wuji-viewer-cache/` under the system temporary directory, or `--cache-dir`.
+
+Open `http://127.0.0.1:8011`. The viewer displays LeRobot GT and, after the
+explicit Load Model and Start Inference actions, renders GT/prediction overlays,
+fixed-world and camera-frame 3D, numeric values, and frame losses. The server
+binds to `0.0.0.0` by default; use SSH forwarding or an authenticated reverse
+proxy for remote access.
+
+Run `bash scripts/download_assets.sh` if the default model is absent. Override
+the checkpoint only when using another compatible model:
+
+```bash
+python -m mint viewer --ckpt /path/to/model.safetensors
+```
+
+The inference profile omits Ray, dataset conversion, training loggers, and
+data-pipeline research backends. Mesh rendering also requires separately
+licensed MANO files. See [Installation](docs/installation.md) for CUDA, MANO,
+and offline installation details.
+
+### Optional headless inference
+
+`mint infer` is a command-line alternative to the viewer, not a prerequisite.
+Use it for automation or direct artifact export:
+
+```bash
+python -m mint infer \
+  --input /path/to/video.mp4 \
+  --checkpoint checkpoints/model.safetensors \
+  --output artifacts/example
+```
+
+## Data processing and training
+
+Data processing and training require the full environment:
+
+```bash
 bash scripts/create_env.sh full
 conda activate mint
 python -m mint doctor --profile full
 ```
 
-完整环境包含训练和 Ray 数据管线依赖。GeoCalib、MoGe、Mega-SAM、HaWoR 等研究后端及其权重不随仓库发布，确认各自许可证后再单独安装：
+GeoCalib, MoGe, and Mega-SAM source is bundled under `third_party/`. The adapted
+HaWoR infra copy is available locally but remains Git-ignored because its
+CC BY-NC-ND terms prohibit redistribution of modifications. Weights, MANO, and
+other separately licensed assets are not bundled. Review `THIRD_PARTY_NOTICES.md`,
+register the local source, and verify the data profile:
 
 ```bash
 bash scripts/install_data_backends.sh
 python -m mint doctor --profile data
 ```
 
-### 最小推理环境
-
-```bash
-bash scripts/create_env.sh inference
-conda activate mint-inference
-python -m mint doctor --profile inference
-```
-
-最小环境不安装 Ray、数据转换组件、训练日志组件和数据管线研究后端。CUDA、MANO、权重和离线安装说明见 [安装指南](docs/installation.md)。
-
-### 下载公开资产
-
-```bash
-bash scripts/download_assets.sh
-```
-
-该脚本会下载并校验两类文件：本仓库 GitHub Release 中可再分发的机器人手 URDF/mesh，以及 wuji-ego-mint 的 `model.safetensors`。学生模型优先从 [ModelScope](https://www.modelscope.cn/models/AsherZhu/mint_v1) 下载，再依次尝试 [Hugging Face](https://huggingface.co/ZZJAsher/mint_v1) 官方端点和 HF 镜像。脚本不会下载 LingBot-Map 预训练 backbone，也不会获取优化器或随机状态；所有大型文件均位于 Git 忽略目录。
-
-若 Hugging Face 仓库要求身份验证，请先设置 `HF_TOKEN`。MANO 不会被脚本下载，必须按 [安装指南](docs/installation.md) 接受其独立许可证并手动放置。
-
-## 快速开始
-
-### 1. 处理已审核视频
+### Process approved videos with Ray
 
 ```bash
 python -m mint pipeline \
@@ -71,80 +147,119 @@ python -m mint pipeline \
   --num-gpus 1
 ```
 
-完整管线需要较多 GPU 资源。长任务开始前请运行 `python -m mint doctor --profile data`，并先使用一段短且不含敏感信息的视频验证流程。
+Run `python -m mint doctor --profile data` before a long job and begin with one short,
+non-sensitive clip.
 
-### 2. 训练模型
+`mint pipeline` uses Ray to turn source videos into training-ready LeRobot v3
+data. It does not start the viewer or display model predictions.
 
-在 `configs/training/lingbotmap_base.yaml` 中设置数据集根目录，然后运行：
+### Train
 
-```bash
-python -m mint train --config configs/training/lingbotmap_base.yaml --inspect
-python -m mint train --config configs/training/lingbotmap_base.yaml
-```
-
-`--inspect` 不读取数据集和权重，仅构建模型并输出结构，建议将它作为训练配置的第一项检查。
-
-### 3. 执行推理
+Only the two configurations associated with the selected checkpoints are kept. `step_00019000` is Stage 1; `step_00004500` is the Stage 2 WorldEngine camera-only adaptation initialized from Stage 1:
 
 ```bash
-python -m mint infer \
-  --input data/samples/example.mp4 \
-  --checkpoint checkpoints/model.safetensors \
-  --output artifacts/example
+python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml --inspect
+python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml
+
+python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml --inspect
+python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml
 ```
 
-### 4. 启动 Viewer
+The Stage 2 `train.init_from` points to the Stage 1
+`step_00019000/model.safetensors`. `--inspect` constructs the model without
+loading a dataset and is the recommended first configuration check.
+
+`mint train` consumes the processed dataset and writes training checkpoints;
+it does not require the viewer. To inspect a trained model interactively, run
+`python -m mint viewer --ckpt /path/to/checkpoint` afterward.
+
+## LeRobot sample
+
+`data/samples/lerobot_v3/` is the only bundled sample. It takes the two middle
+entries after sorting the Hot3D sequence exports and crops the centered 15
+seconds from each, producing a valid two-episode, 900-frame LeRobot v3 dataset
+with synchronized video, camera/hand labels, task text, and episode metadata.
+Participant IDs and original sequence names are not stored in the sample.
+
+Rebuild it from local full exports with:
 
 ```bash
-python -m mint viewer \
-  --samples data/samples \
-  --checkpoint checkpoints/model.safetensors \
-  --config configs/training/lingbotmap_base.yaml
+python scripts/build_sample_lerobot.py \
+  --source-root /path/to/hot3d_to_lerobot \
+  --output data/samples/lerobot_v3
 ```
 
-浏览器打开 `http://127.0.0.1:7860`。服务默认仅监听本机；如需监听其他地址，请在受控网络或带认证的反向代理后使用。
+Dataset access does not itself grant redistribution rights. The publisher must
+still confirm licensing, participant consent, and frame-by-frame privacy review.
 
-## 测试样例与隐私
+## Benchmark
 
-Ego4D、EPIC-KITCHENS 和 EgoDex 数据不会被自动打包或重新分发。能够获取数据不等于拥有再次分发的权利。只有在许可证、参与者授权和隐私检查均通过后，才能将样例放入 `data/samples/`。
+The complete implementation and tests live in `eval/model_effect/benchmark/`
+and are integrated into the Viewer's Benchmark panel. Users provide datasets
+and install the optional runtime themselves; the CLI remains available:
 
 ```bash
-python scripts/prepare_samples.py \
-  --input /path/to/approved-clips \
-  --output data/samples \
-  --review-manifest data/samples/review.json
-python scripts/privacy_audit.py --strict
+python eval/model_effect/benchmark/run.py \
+  --ckpt /path/to/checkpoint \
+  --config configs/training/stage2_resume_worldengine_camera_only.yaml \
+  --data-root /path/to/benchmark-data
 ```
 
-样例准备工具会移除容器元数据、统一公开文件名、限制时长与分辨率，并支持应用人工指定的隐私遮罩。自动处理不能替代逐帧人工审核。详细要求见 [隐私说明](docs/privacy.md)。
+Set `CAMERA_TRAJECTORY_ROOT` for camera-trajectory exports when needed. Aliyun
+defaults are placeholders; users must configure the workspace, resource, image,
+CPFS, credentials, and environment. This project does not provision or maintain
+benchmark environments.
 
-## 仓库结构
+## Repository layout
 
 ```text
 mint/
-|-- configs/          可公开、可移植的配置模板
-|-- data/samples/     仅存放已审核样例，默认为空
-|-- data_cleaning/    轨迹清理与平滑算法
-|-- docs/             架构与运行文档（英文）
-|-- environments/     完整环境与最小推理环境定义
-|-- mint/             CLI、推理引擎、渲染器和 Viewer
-|-- model_train/      训练引擎、模型、损失函数和数据加载器
-|-- modules/          数据管线模型适配层
-|-- ray_pipeline/     Ray 调度、Actor、Manifest 和数据导出
-|-- scripts/          环境、资产、隐私和样例处理脚本
-`-- third_party/      仅保留清单；第三方源码和权重默认忽略
+|-- configs/          Two-stage training recipes and inference settings
+|-- data/samples/     Approved Hot3D LeRobot v3 sample
+|-- eval/model_effect Original visualization, inference adapters, and benchmarks
+|-- docs/             Architecture and operational guides
+|-- environments/     Full and inference-only dependency specifications
+|-- mint/             CLI, inference engine, renderer, and web viewer
+|-- model_train/      Training engine, model, losses, and LeRobot loader
+|-- ray_pipeline/     Ray scheduling, actors, model backends, trajectory cleanup, manifests, and export
+|-- scripts/          Reproducible setup, asset, privacy, and sample tools
+`-- third_party/      Redistributable source snapshot; adapted HaWoR is local-only, assets excluded
 ```
 
-## 文档
+## Documentation
 
-- [架构](docs/architecture.md)
-- [安装](docs/installation.md)
-- [数据管线](docs/data-pipeline.md)
-- [训练](docs/training.md)
-- [推理与 Viewer](docs/inference.md)
-- [隐私与发布检查](docs/privacy.md)
-- [安全策略](SECURITY.md)
+- [Architecture](docs/architecture.md)
+- [Installation](docs/installation.md)
+- [Data pipeline](docs/data-pipeline.md)
+- [Training](docs/training.md)
+- [Inference and viewer](docs/inference.md)
+- [Privacy and release checklist](docs/privacy.md)
+- [Security policy](SECURITY.md)
 
-## 许可证
+## Acknowledgements
 
-wuji-ego-mint 原创代码使用 MIT License。上游模型、数据集、MANO 资产、内置的 LingBot-Map 源文件及可选研究后端仍遵循各自许可证。发布前请阅读 [第三方声明](THIRD_PARTY_NOTICES.md)。
+MINT is made possible by the following research projects, open-source libraries,
+tools, and datasets. The first three acknowledgements reflect the primary
+technical foundations of this repository.
+
+- **VITRA** — MINT's data-processing architecture, egocentric reconstruction workflow, world-space camera/hand annotations, and LeRobot conversion conventions evolved from the VITRA and VITRA-1M data engine.
+- **[LingBot-Map](https://github.com/robbyant/lingbot-map)** — provides the core model architecture and the upstream source adapted for MINT camera-and-hand training and inference.
+- **[HaWoR](https://github.com/ThunderVVV/HaWoR)** — provides monocular hand motion reconstruction, MANO estimation, tracking, and world-space hand-processing components used by the optional data pipeline. Its use remains subject to the upstream non-commercial, no-derivatives license.
+- **Camera, depth, and tracking research** — [GeoCalib](https://github.com/cvg/GeoCalib), [MoGe](https://github.com/microsoft/MoGe), [Mega-SAM](https://github.com/mega-sam/mega-sam), [DROID-SLAM](https://github.com/princeton-vl/DROID-SLAM), [UniDepth](https://github.com/lpiccinelli-eth/UniDepth), [Metric3D](https://github.com/YvanYin/Metric3D), [DeepCalib](https://github.com/alexvbogdan/DeepCalib), [DINOv2](https://github.com/facebookresearch/dinov2), [VGGT](https://github.com/facebookresearch/vggt), InfiniteVGGT, and [PyTorch3D](https://github.com/facebookresearch/pytorch3d).
+- **Hand models, simulation, and retargeting** — [MANO](https://mano.is.tue.mpg.de), [SMPL-X](https://smpl-x.is.tue.mpg.de), [MuJoCo](https://mujoco.org), and the Wuji hand description and retargeting components used by the optional Viewer panels.
+- **Model training and distribution** — [PyTorch](https://pytorch.org), [TorchVision](https://github.com/pytorch/vision), [TorchAO](https://github.com/pytorch/ao), [timm](https://github.com/huggingface/pytorch-image-models), [einops](https://github.com/arogozhnikov/einops), [FlashInfer](https://github.com/flashinfer-ai/flashinfer), [Accelerate](https://github.com/huggingface/accelerate), [Hugging Face Hub](https://github.com/huggingface/huggingface_hub), [ModelScope](https://github.com/modelscope/modelscope), [Safetensors](https://github.com/huggingface/safetensors), and [Weights & Biases](https://wandb.ai).
+- **Data, orchestration, and media** — [Ray](https://github.com/ray-project/ray), [LeRobot](https://github.com/huggingface/lerobot), [NumPy](https://numpy.org), [SciPy](https://scipy.org), [pandas](https://pandas.pydata.org), [Apache Arrow/PyArrow](https://arrow.apache.org), [OpenCV](https://opencv.org), [Decord](https://github.com/dmlc/decord), [FFmpeg](https://ffmpeg.org), [PyYAML](https://pyyaml.org), [tqdm](https://github.com/tqdm/tqdm), [joblib](https://joblib.readthedocs.io), [natsort](https://github.com/SethMMorton/natsort), [psutil](https://github.com/giampaolo/psutil), and [NVIDIA ML Python](https://pypi.org/project/nvidia-ml-py/).
+- **Viewer, evaluation, and optional integrations** — [Flask](https://flask.palletsprojects.com), [Matplotlib](https://matplotlib.org), [Ultralytics](https://github.com/ultralytics/ultralytics), [TensorFlow](https://www.tensorflow.org), and [Project Aria Tools](https://github.com/facebookresearch/projectaria_tools).
+- **Datasets and benchmarks** — [HOT3D](https://github.com/facebookresearch/hot3d), [ARCTIC](https://arctic.is.tue.mpg.de), [Ego4D](https://ego4d-data.org), [EPIC-KITCHENS](https://epic-kitchens.github.io), and [EgoDex](https://ego-dex.github.io). Dataset access and redistribution remain governed by each dataset's own terms.
+- **Development and packaging tools** — [pytest](https://pytest.org), [Ruff](https://github.com/astral-sh/ruff), [pre-commit](https://pre-commit.com), [setuptools](https://github.com/pypa/setuptools), [wheel](https://github.com/pypa/wheel), [CMake](https://cmake.org), and [Ninja](https://ninja-build.org).
+
+We thank all upstream authors and maintainers. This acknowledgement does not
+replace their citation or license requirements; see
+[Third-party notices](THIRD_PARTY_NOTICES.md) before use or distribution.
+
+## License
+
+wuji-ego-mint's original code is released under the MIT License. Upstream models,
+datasets, MANO assets, vendored LingBot-Map files, and optional research
+backends retain their own licenses. Review [Third-party notices](THIRD_PARTY_NOTICES.md)
+before distribution.

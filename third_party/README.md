@@ -1,9 +1,40 @@
-# Optional research backends
+# Bundled research backends
 
-This directory is empty in source distributions. `install_data_backends.sh`
-checks out the upstream projects listed in `manifest.yaml` after the user has
-reviewed their licenses.
+MINT keeps the source required by its data pipeline under this directory. The
+current working-tree snapshot was imported from `wuji-data-infra` at revision
+`f198a1ed08b508f7bef7de70ae20b5fe29122997` on 2026-08-16. Upstream copyright,
+license, and notice files are retained inside each component.
 
-Do not commit downloaded source, checkpoints, MANO files, or generated output.
-Some optional backends and assets restrict commercial use or redistribution.
+| Directory | Source license | Source-release status |
+| --- | --- | --- |
+| `GeoCalib/` | Apache-2.0 | Bundled; retain the included license and notices |
+| `MoGe/` | MIT, with bundled Apache-2.0 components | Bundled; retain the included license |
+| `mega-sam/` | Apache-2.0 software; CC BY 4.0 other materials | Bundled with disclosed Apache-2.0 modifications |
+| `HaWoR/` | CC BY-NC-ND 4.0 | Local only and Git-ignored; separate permission is required for this modified infra copy to be redistributed |
 
+This is a license summary, not legal advice. The local HaWoR copy contains a
+MINT-specific checkpoint/MANO path adaptation, so its `NoDerivatives` terms do
+not permit this copy to be included in a public source release. It may only be
+used internally for non-commercial purposes covered by the license, unless
+separate permission is obtained from the HaWoR authors.
+
+Model weights, generated binaries, output-heavy demo notebooks, and separately
+licensed assets are intentionally excluded from source releases. This includes
+GeoCalib/MoGe/Mega-SAM/HaWoR checkpoints, DROID-SLAM and Metric3D weights, and
+MANO files. Users must obtain those files from their official sources and
+comply with their separate terms. MANO requires account registration and
+acceptance of the official MANO license.
+
+## Local Mega-SAM changes
+
+The infra snapshot contained three long-video memory fixes that differ from the
+base upstream import. They are preserved and marked in the corresponding files:
+
+- `mega-sam/base/droid_slam/depth_video.py`
+- `mega-sam/base/droid_slam/droid.py`
+- `mega-sam/base/droid_slam/trajectory_filler.py`
+
+The changes avoid allocating unused full-resolution disparity, release dead RGB
+buffers before full bundle adjustment, and encode trajectory-filler frames in
+bounded chunks. They are distributed under Mega-SAM's Apache-2.0 software
+license.

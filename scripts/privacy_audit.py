@@ -12,6 +12,7 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 LOCALIZED_READMES = {Path("README.md")}
+CJK_SOURCE_ROOTS = (Path("eval/model_effect"), Path("tools/video_summary"))
 TEXT_SUFFIXES = {
     ".css", ".html", ".ini", ".js", ".json", ".md", ".py", ".sh", ".toml", ".txt", ".yaml", ".yml"
 }
@@ -58,7 +59,10 @@ def audit() -> list[tuple[Path, int, str, str]]:
         for line_number, line in enumerate(lines, 1):
             for rule in RULES:
                 relative = path.relative_to(PROJECT_DIR)
-                if rule.name == "CJK text" and relative in LOCALIZED_READMES:
+                if rule.name == "CJK text" and (
+                    relative in LOCALIZED_READMES
+                    or any(root == relative or root in relative.parents for root in CJK_SOURCE_ROOTS)
+                ):
                     continue
                 match = rule.expression.search(line)
                 if match:

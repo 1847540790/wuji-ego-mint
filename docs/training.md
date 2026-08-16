@@ -2,17 +2,19 @@
 
 ## Dataset
 
-The public loader expects a LeRobot v3 dataset with the camera, image, hand,
-and hand-presence fields produced by the MINT pipeline. Set `data.root` in a
-copy of `configs/training/lingbotmap_base.yaml`.
+The loader expects LeRobot v3 datasets. The repository keeps exactly two
+historical training configurations: Stage 1 uses four real-data roots and
+Stage 2 uses the WorldEngine root.
 
-Dataset files are never part of the source distribution. Keep local dataset
-configuration in an ignored file when paths reveal infrastructure details.
+The retained historical recipes intentionally point to the shared CPFS data
+and checkpoint locations used by those runs. Update those paths only when
+reproducing the stages in a different environment.
 
 ## Inspect first
 
 ```bash
-python -m mint train --config configs/training/lingbotmap_base.yaml --inspect
+python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml --inspect
+python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml --inspect
 ```
 
 Inspection builds the model on CPU, prints the module and freeze structure, and
@@ -22,16 +24,19 @@ configuration errors without allocating training GPUs.
 ## Train
 
 ```bash
-python -m mint train --config configs/training/lingbotmap_base.yaml
+python -m mint train --config configs/training/stage1_lingbotmap_distill_axis_angle_refine.yaml
+python -m mint train --config configs/training/stage2_resume_worldengine_camera_only.yaml
 ```
 
-Accelerate selects the visible GPU topology. For reproducibility, the public
-configuration fixes model, data loader, and sampling seeds. Strictly
+Stage 1 reproduces the H20 `step_00019000` run. Stage 2 initializes from that
+model, freezes the aggregator, FoV, and hand modules, and trains only the camera
+head on WorldEngine data. Accelerate selects the visible GPU topology. Strictly
 deterministic CUDA algorithms remain disabled because some required operations
 do not provide deterministic implementations.
 
-W&B is disabled by default. To enable it, authenticate through the W&B CLI or
-an environment variable. Never store an API key in a YAML or Markdown file.
+Both historical configurations keep the original online W&B setting and refer
+to the existing external credential file; the credential itself is not copied
+into this repository.
 
 ## Resume and initialize
 

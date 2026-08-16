@@ -1,0 +1,143 @@
+# Stage 1 configuration used by the 2026-08-08 H20 run at step 19000.
+# Source run: NVIDIA_H20/20260808_193031/lingbotmap_distill_axis_angle_refine
+model:
+  name: split_fov_head
+  pretrained: /cpfs/zhuzijie/wuji-ego-pipeline-train/weights/lingbotmap/lingbot-map.pt
+  pretrained_exclude: ["camera_head*"]
+  enable_hand: true
+  hand_head:
+    name: refine
+    dim: 512
+    num_queries: 4
+    num_iterations: 2
+    trunk_depth: 1
+    rotation_refine_mode: compose_axis_angle
+    rotation_delta_frame: local
+    rotation_delta_max_angle_deg: 30.0
+  enable_hand_presence: true
+  hand_presence_head:
+    dim: 256
+    num_heads: 4
+  fov_head:
+    dim: 512
+    num_heads: 8
+    trunk_depth: 2
+    initial_fov_deg: [60.0, 75.0]
+    min_fov_rad: 1.0e-4
+  backbone:
+    img_size: 518
+    patch_size: 14
+    embed_dim: 1024
+    use_sdpa: true
+    use_gradient_checkpoint: true
+    camera_num_iterations: 4
+    enable_camera: true
+    enable_depth: false
+    enable_point: false
+    enable_local_point: false
+
+data:
+  name: lerobot_v3
+  root:
+    - /cpfs/zhuzijie/wuji-ego-pipeline-train/output/scripts/data_processed/pipeline_lerobot/build_train_lerobot/ego4d/lerobot_v3
+    - /cpfs/zhuzijie/wuji-ego-pipeline-train/output/scripts/data_processed/pipeline_lerobot/build_train_lerobot/egodex/lerobot_v3
+    - /cpfs/zhuzijie/wuji-ego-pipeline-train/output/scripts/data_processed/pipeline_lerobot/build_train_lerobot/epickitchen/lerobot_v3
+    - /cpfs/zhuzijie/wuji-ego-pipeline-train/output/scripts/data_processed/pipeline_lerobot/build_train_lerobot/nuoyiteng/lerobot_v3
+  camera_translation_normalization:
+    enabled: true
+    cache_dir: output/cache/camera_normalization
+    workers: 32
+    files_per_task: 8
+    window_batch_size: 4096
+  clip_len: 32
+  clip_stride: 32
+  size_hw: [378, 518]
+  batch_size: 1
+  num_workers: 8
+  shuffle: true
+  require_mano_gt: true
+  require_kpt21_gt: false
+
+loss:
+  hand_presence:
+    weight: 2.0
+  image_hand:
+    weight: 0.01
+    min_depth: 0.01
+    presence_threshold: 0.0
+  camera:
+    weight: 1.0
+    terms:
+      - {name: trans_l1, weight: 0.025}
+      - {name: trans_scale_aligned_l1, weight: 0.25}
+      - {name: rot_geo, weight: 0.5}
+      - {name: rot_vel_geo, weight: 0.25}
+  fov:
+    weight: 2.0
+    terms:
+      - {name: fov_l1, weight: 1.0}
+      - {name: fov_vel_l1, weight: 0.05}
+  mano_param:
+    weight: 1.0
+    terms:
+      - {name: transl_l1, weight: 2.0}
+      - {name: orient_geo, weight: 1.0}
+      - {name: pose_geo, weight: 1.0}
+      - {name: betas_l1, weight: 0.3}
+      - {name: betas_consistency_l1, weight: 0.2}
+      - {name: transl_vel_l1, weight: 0.25}
+      - {name: orient_vel_geo, weight: 0.25}
+      - {name: transl_acc_l1, weight: 0.25}
+      - {name: orient_acc_geo, weight: 0.1}
+
+train:
+  run_name: null
+  reproducibility:
+    enabled: true
+    seed: 42
+    deterministic_algorithms: false
+  epochs: 1
+  log_every: 5
+  ckpt_every: 500
+  grad_clip: 0.0
+  grad_value_clip: 1.0
+  grad_accum: 1
+  mixed_precision: bf16
+  wandb:
+    enabled: true
+    project: lingbotmap-distill
+    name: null
+    mode: online
+    api_key_file: /cpfs/zhuzijie/wuji-ego-pipeline-train/model_train/configs/wandb/wandb_key.md
+
+optim:
+  lr: 1.0e-4
+  param_groups:
+    - {match: backbone.camera_head, lr: 1.0e-4}
+    - {match: backbone.fov_head, lr: 1.0e-4}
+    - {match: backbone, lr: 5.0e-5}
+    - {match: hand_head, lr: 5.0e-4}
+    - {match: hand_presence_head, lr: 5.0e-4}
+  weight_decay: 0.05
+  warmup_steps: 2000
+
+dist:
+  nnodes: 1
+  gpus_per_node: 8
+  master_addr: 127.0.0.1
+  master_port: 29500
+
+aliyun:
+  region: cn-hangzhou
+  workspace_id: "590221"
+  resource_id: quotai7l7gqmouqw
+  image: ego-pretrain-registry-vpc.cn-hangzhou.cr.aliyuncs.com/egoscale/pipeline_distill:pipeline-distill-v2_accelerated
+  cpfs_uri: bmcpfs://cpfs-00000ub3ici1dnniit2i0-vpc-egtdgw.cn-hangzhou.cpfs.aliyuncs.com/
+  repo_dir: /cpfs/zhuzijie/wuji-ego-pipeline-train
+  nnodes: 8
+  gpus_per_node: 8
+  worker_cpu: 184
+  worker_memory: 1800Gi
+  worker_shared_memory: 1800Gi
+  conda_env: pipeline_train
+  job_name: zhuzijie-egodistill-image-hand

@@ -49,6 +49,8 @@ def run_checks(profile: str) -> list[Check]:
             _module("scipy"),
             _module("smplx"),
             _module("torchao"),
+            _module("decord"),
+            _module("pyarrow"),
         ])
         right = PROJECT_DIR / "assets" / "mano" / "mano_right" / "MANO_RIGHT.pkl"
         left = PROJECT_DIR / "assets" / "mano" / "mano_left" / "MANO_LEFT.pkl"
@@ -58,13 +60,32 @@ def run_checks(profile: str) -> list[Check]:
         checks.append(Check("MANO assets", right.is_file() and left.is_file(), "licensed files", False))
     if profile in {"train", "full"}:
         checks.extend([_module("accelerate"), _module("decord"), _module("pyarrow")])
-    if profile == "data":
+    if profile in {"data", "full"}:
         checks.extend([_module("ray"), _module("joblib"), _module("ultralytics")])
         for name in ("GeoCalib", "MoGe", "mega-sam", "HaWoR"):
             path = PROJECT_DIR / "third_party" / name
-            checks.append(Check(f"backend:{name}", path.is_dir(), "installed" if path.is_dir() else "missing"))
-    elif profile == "full":
-        checks.extend([_module("ray"), _module("joblib"), _module("ultralytics")])
+            checks.append(Check(
+                f"backend:{name}", path.is_dir(),
+                "source available" if path.is_dir() else "source missing",
+            ))
+        assets = {
+            "GeoCalib weights": PROJECT_DIR / "model" / "geocalib" / "pinhole.tar",
+            "MoGe weights": PROJECT_DIR / "model" / "moge2" / "model.pt",
+            "Mega-SAM weights": PROJECT_DIR / "model" / "megasam" / "megasam_final.pth",
+            "HaWoR weights": PROJECT_DIR / "model" / "hawor" / "hawor.ckpt",
+            "HaWoR config": PROJECT_DIR / "model" / "hawor" / "model_config.yaml",
+            "HaWoR detector": PROJECT_DIR / "model" / "hawor" / "detector.pt",
+            "DROID-SLAM weights": (
+                PROJECT_DIR / "third_party" / "HaWoR" / "weights" / "external" / "droid.pth"
+            ),
+            "Metric3D weights": (
+                PROJECT_DIR / "third_party" / "HaWoR" / "thirdparty" / "Metric3D"
+                / "weights" / "metric_depth_vit_large_800k.pth"
+            ),
+        }
+        for name, path in assets.items():
+            detail = str(path.relative_to(PROJECT_DIR))
+            checks.append(Check(name, path.is_file(), detail, False))
     return checks
 
 

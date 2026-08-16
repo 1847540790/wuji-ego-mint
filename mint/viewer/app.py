@@ -23,6 +23,12 @@ from mint.visualization.render import render_prediction, trajectory_payload
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+DEFAULT_SAMPLES_DIR = PROJECT_DIR / "data" / "samples"
+DEFAULT_ARTIFACTS_DIR = PROJECT_DIR / "artifacts" / "viewer"
+DEFAULT_CHECKPOINT = PROJECT_DIR / "checkpoints" / "model.safetensors"
+DEFAULT_CONFIG = (
+    PROJECT_DIR / "configs" / "training" / "stage2_resume_worldengine_camera_only.yaml"
+)
 
 
 @dataclass(frozen=True)
@@ -358,10 +364,14 @@ def viewer_main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description="Start the local MINT prediction viewer.")
-    parser.add_argument("--samples", default="data/samples", help="Approved sample directory")
-    parser.add_argument("--artifacts", default="artifacts/viewer", help="Generated artifact directory")
-    parser.add_argument("--checkpoint", required=True, help="MINT checkpoint file or directory")
-    parser.add_argument("--config", default="configs/training/lingbotmap_base.yaml")
+    parser.add_argument("--samples", default=str(DEFAULT_SAMPLES_DIR), help="Approved sample directory")
+    parser.add_argument("--artifacts", default=str(DEFAULT_ARTIFACTS_DIR), help="Generated artifact directory")
+    parser.add_argument(
+        "--checkpoint",
+        default=str(DEFAULT_CHECKPOINT),
+        help="MINT checkpoint file or directory (default: checkpoints/model.safetensors)",
+    )
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--devices", default="auto")
     parser.add_argument(
         "--compile-mode", choices=("off", *COMPILE_MODES), default="auto",
@@ -386,10 +396,17 @@ def viewer_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--open", action="store_true", dest="open_browser")
     args = parser.parse_args(argv)
 
+    checkpoint = Path(args.checkpoint).expanduser()
+    if not checkpoint.exists():
+        parser.error(
+            f"checkpoint not found: {checkpoint}. Run 'bash scripts/download_assets.sh' "
+            "or pass --checkpoint PATH."
+        )
+
     service = ViewerService(
         samples_dir=Path(args.samples).expanduser(),
         artifacts_dir=Path(args.artifacts).expanduser(),
-        checkpoint=args.checkpoint,
+        checkpoint=str(checkpoint),
         config=args.config,
         devices=args.devices,
         max_frames=args.max_frames,
