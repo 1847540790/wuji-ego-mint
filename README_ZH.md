@@ -102,17 +102,15 @@ GeoCalib、MoGe 和 Mega-SAM 的源码快照位于 `third_party/`，但生产管
 
 ### 训练模型
 
-训练配置只保留与两个指定 checkpoint 对应的两阶段配置。`step_00019000` 是 Stage 1，`step_00004500` 是从 Stage 1 权重初始化、仅训练 WorldEngine 相机头的 Stage 2：
+训练配置只保留与两个指定 checkpoint 对应的两阶段配置。`step_00019000` 是 Stage 1；`step_00004500` 是从 Stage 1 权重初始化、仅训练 WorldEngine 相机头的 Stage 2，也是微调完成后开源发布的最终模型 checkpoint：
 
 ```bash
-python -m mint train --config configs/training/mint_step1.yaml --inspect
 python -m mint train --config configs/training/mint_step1.yaml
 
-python -m mint train --config configs/training/mint_step2.yaml --inspect
 python -m mint train --config configs/training/mint_step2.yaml
 ```
 
-Stage 2 配置中的 `train.init_from` 已指向 Stage 1 的 `step_00019000/model.safetensors`。`--inspect` 不读取数据集，仅构建模型并输出结构，建议将它作为训练配置的第一项检查。
+Stage 2 配置中的 `train.init_from` 已指向 Stage 1 的 `step_00019000/model.safetensors`。
 
 `mint train` 消费由使用者单独准备的兼容 LeRobot 数据集并产出训练 checkpoint。训练完成后，可直接在 Viewer 面板中选择并检查新的 checkpoint。
 
