@@ -127,7 +127,7 @@ Stage 2 配置中的 `train.init_from` 已指向 Stage 1 的 `step_00019000/mode
 
 ## LeRobot 样例与隐私
 
-仓库只保留 `data/samples/lerobot_v3/` 这一套小样例：将 Hot3D 序列排序后取正中间的两个序列，分别截取居中 15 秒，合并为包含 2 个 episode、900 帧的标准 LeRobot v3 数据集。它包含视频、Hot3D 相机/双手标注、任务文本和 episode 索引，整体小于 20 MB；样例不记录参与者 ID 或原始序列名。
+仓库只保留 `data/samples/lerobot_v3/` 这一套小样例：从排序后的 Hot3D 序列中选择 8 段不同操作内容，分别截取居中 15 秒，合并为包含 8 个 episode、3,600 帧的标准 LeRobot v3 数据集。它包含视频、Hot3D 相机/双手标注、任务文本和 episode 索引，整体小于 30 MB；样例不记录参与者 ID 或原始序列名。
 
 可从本地已有的三个完整 export 重建：
 

@@ -393,16 +393,17 @@ def _flatten(point: np.ndarray, plane: dict) -> np.ndarray:
 
 
 def _draw_arrow(frame: np.ndarray, start, end, color, thickness: int,
-                dash: tuple[int, int] | None = None) -> None:
+                dash: tuple[int, int] | None = None,
+                outline_color=OUTLINE) -> None:
     start_i = tuple(np.rint(start).astype(int))
     end_i = tuple(np.rint(end).astype(int))
     if not dash:
-        cv2.arrowedLine(frame, start_i, end_i, OUTLINE, thickness + 4, cv2.LINE_AA,
+        cv2.arrowedLine(frame, start_i, end_i, outline_color, thickness + 4, cv2.LINE_AA,
                         tipLength=0.18)
         cv2.arrowedLine(frame, start_i, end_i, color, thickness, cv2.LINE_AA,
                         tipLength=0.18)
         return
-    _draw_segment(frame, start, end, OUTLINE, thickness + 3, dash)
+    _draw_segment(frame, start, end, outline_color, thickness + 3, dash)
     _draw_segment(frame, start, end, color, thickness, dash)
     delta = np.asarray(end, dtype=np.float64) - np.asarray(start, dtype=np.float64)
     length = float(np.linalg.norm(delta))
@@ -419,7 +420,7 @@ def _draw_arrow(frame: np.ndarray, start, end, color, thickness: int,
     color_triangle = np.rint([
         end, base + normal * half_width, base - normal * half_width,
     ]).astype(np.int32)
-    cv2.fillConvexPoly(frame, outline_triangle, OUTLINE, cv2.LINE_AA)
+    cv2.fillConvexPoly(frame, outline_triangle, outline_color, cv2.LINE_AA)
     cv2.fillConvexPoly(frame, color_triangle, color, cv2.LINE_AA)
 
 
@@ -588,14 +589,16 @@ def _draw_scene(frame: np.ndarray, items: list[dict], view: dict,
         for label, endpoint, color in zip(
                 ("X", "Y", "Z"), np.eye(3) * axis_length, AXIS_COLORS):
             projected = project(endpoint)
-            _draw_segment(frame, origin, projected, OUTLINE, _scaled(3.0, ss))
-            _draw_segment(frame, origin, projected, color, _scaled(1.35, ss))
+            faded_outline = _mix(OUTLINE, BG_MIX, 0.38)
+            faded_color = _mix(color, BG_MIX, 0.50)
+            _draw_segment(frame, origin, projected, faded_outline, _scaled(2.4, ss))
+            _draw_segment(frame, origin, projected, faded_color, _scaled(1.25, ss))
             cv2.putText(frame, label,
                         tuple(np.rint(projected + (_scaled(4, ss), _scaled(4, ss))).astype(int)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45 * ss, color,
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45 * ss, faded_color,
                         _scaled(1, ss), cv2.LINE_AA)
         cv2.circle(frame, tuple(np.rint(origin).astype(int)), _scaled(3, ss),
-                   TEXT, -1, cv2.LINE_AA)
+                   _mix(TEXT, BG_MIX, 0.48), -1, cv2.LINE_AA)
 
     # 逐帧落影统一画在一张副本上，最后一次性混合：既保留网格透过阴影的层次，也只付一次混合开销。
     shadow_layer = None if static_only else frame.copy()
@@ -704,22 +707,26 @@ def _draw_scene(frame: np.ndarray, items: list[dict], view: dict,
                    max(12.0, min(radius * 0.50, 48.0)))
         # 三轴只给视线轴标注（并注明 GT/Pred）：GT+Pred 各三条标签会把画面中心糊成一团。
         labels = (None, None, "Pred view" if predicted else "GT view")
-        camera_dash = (_scaled(6, ss), _scaled(4, ss))
+        camera_dash = None
+        faded_outline = _mix(OUTLINE, BG_MIX, 0.34)
         for direction, length, color, label in zip(directions, lengths, pose_colors, labels):
             endpoint = project(position + direction * length)
-            _draw_arrow(frame, center_px, endpoint, color,
-                        _scaled(3.2 if label else 2.4, ss), camera_dash)
+            faded_color = _mix(color, BG_MIX, 0.58)
+            _draw_arrow(frame, center_px, endpoint, faded_color,
+                        _scaled(3.2 if label else 2.4, ss), camera_dash,
+                        outline_color=faded_outline)
             if label:
                 _put_label(frame, label, endpoint + (_scaled(4, ss), -_scaled(4, ss)),
-                           color, 0.36, ss)
+                           faded_color, 0.36, ss)
         marker_size = max(2, int(round((16 if predicted else 12) * view["zoom"] * ss)))
         x0, y0 = np.rint(center_px - marker_size * 0.5).astype(int)
         x1, y1 = x0 + marker_size, y0 + marker_size
         marker_color = _bgr("#ff6b6b") if predicted else _bgr("#51cf66")
-        _draw_dashed_rect(frame, (x0, y0), (x1, y1), OUTLINE,
-                          _scaled(2.6, ss), camera_dash)
-        _draw_dashed_rect(frame, (x0, y0), (x1, y1), marker_color,
-                          _scaled(1.2, ss), camera_dash)
+        cv2.rectangle(frame, (x0, y0), (x1, y1), faded_outline,
+                      _scaled(2.6, ss), cv2.LINE_AA)
+        cv2.rectangle(frame, (x0, y0), (x1, y1),
+                      _mix(marker_color, BG_MIX, 0.55),
+                      _scaled(1.2, ss), cv2.LINE_AA)
 
     _chip(frame, [(f"frame {frame_index} / {total_frames - 1}", TEXT, 0.4)],
           (_scaled(10, ss), height - _scaled(10, ss)), ss, align="bl")

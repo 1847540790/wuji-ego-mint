@@ -25,12 +25,14 @@ DEFAULT_CAM_MODE = "max_chunked"
 # smooth=blend 后复用 wuji-data-infra 生产参数的相机系 UKF+RTS 双向平滑。
 HAND_MODES = ["hard", "blend", "smooth"]
 DEFAULT_HAND_MODE = "smooth"
+# Viewer starts slightly lighter than production (0.6/0.6/2.0); users can tune all three.
+DEFAULT_UKF_PARAMS = {"q": 0.7, "r": 0.5, "beta": 0.3}
 # 手形 betas / 内参 FoV 可视化：per_frame=用每帧各自值（现状）；mean=用整段平均值（去逐帧抖动）。
 PARAM_MODES = ["per_frame", "mean"]
 DEFAULT_PARAM_MODE = "per_frame"
 VIDEO_EXTS = (".mp4", ".mov", ".avi", ".mkv", ".webm")   # --no_truth 裸视频模式识别的扩展名
 
 try:
-    ROBOT_RENDER_WIDTH = max(320, int(os.environ.get("VIEWER_ROBOT_RENDER_WIDTH", "768")))
+    ROBOT_RENDER_WIDTH = max(320, int(os.environ.get("VIEWER_ROBOT_RENDER_WIDTH", "640")))
 except ValueError:
-    ROBOT_RENDER_WIDTH = 768
+    ROBOT_RENDER_WIDTH = 640

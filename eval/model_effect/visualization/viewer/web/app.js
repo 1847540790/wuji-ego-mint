@@ -38,8 +38,8 @@ const FRAME_CAPTURE_SOURCES = [
   {id:'mujoco_3d', label:'MuJoCo · 仿真', file:'mujoco_3d'},
   {id:'wuji_retarget_3d', label:'Wuji Hand · Retargeting', file:'wuji_retarget_3d'},
 ];
-const MUJOCO_RENDER_TAG = 'ego_grid_v5';
-const RETARGET_RENDER_TAG = 'wuji_ground_v2';
+const MUJOCO_RENDER_TAG = 'shared_wuji_camera_v8_start_live_line';
+const RETARGET_RENDER_TAG = 'shared_wuji_camera_v8_start_live_line';
 // 固定世界默认 3/4 俯视（弧度）：正对首帧相机光轴的正视图读不出纵深。
 // 与 render/fixed_world_video.py 的 DEFAULT_AZ/DEFAULT_EL 必须一致，否则网页与导出视频不同视角。
 const VIEW_AZ0 = -0.61, VIEW_EL0 = 0.31;
@@ -57,6 +57,7 @@ let state = { eid:0, fps:30, mode:'mesh_skel', nframes:1,
               camMode:'max_chunked',                 // chunked / max_chunked / streaming / exact full
               fullMaxFrames:null,                    // 模型加载后由后端返回当前主卡的 exact full 安全上限
               handMode:'smooth',                     // hard / blend / smooth(blend + UKF/RTS 后处理)
+              ukf:{q:0.7,r:0.5,beta:0.3},            // 轻于生产默认 0.6/0.6/2.0；仅 smooth 生效
               gtBetas:'per_frame', predBetas:'per_frame', predFov:'per_frame',  // 手形/内参 每帧 vs 整段平均
               gt:null, pred:null, metrics:null, metricsError:null, nums:null,
                                                         // nums=逐帧数值(每块下方面板)
@@ -112,6 +113,12 @@ async function getJSON(u){ const r = await fetch(U(u)); if(!r.ok) throw new Erro
 
 let EP_TOTAL = 0, CKPT_TAG = '';
 const clampEp = v => EP_TOTAL ? Math.min(EP_TOTAL-1, Math.max(0, Math.floor(+v||0))) : 0;
+function effectiveHandMode(){
+  if(state.handMode!=='smooth') return state.handMode;
+  const fmt=value=>Number(value).toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
+  return `smooth@${fmt(state.ukf.q)},${fmt(state.ukf.r)},${fmt(state.ukf.beta)}`;
+}
+function appendHandMode(params){ params.set('hand_mode',effectiveHandMode()); return params; }
 function syncFullLimit(value){
   const limit = Math.max(0, Math.floor(+value||0));
   if(limit) state.fullMaxFrames = limit;
@@ -173,7 +180,7 @@ function updateLoadBtn(){
     btn.title = state.modelReady ? '显式运行当前输入和设置；其他选择操作不会自动推理'
                                  : '请先点 [⬇ 加载模型] 载入模型后再推理';
   }
-  for(const id of ['#camMode','#gtBetas','#predBetas','#predFov']){
+  for(const id of ['#camMode','#gtBetas','#predBetas','#predFov','#ukfQ','#ukfR','#ukfBeta']){
     const el=$(id); if(el) el.disabled=state.loading;
   }
   document.querySelectorAll('#handModeSeg button').forEach(el=>{ el.disabled=state.loading; });
@@ -444,9 +451,13 @@ async function init(){
     queueInference('相机推理模式已改为「'+camModeSel.options[camModeSel.selectedIndex].text+'」，点击 [▶ 开始推理] 应用'); };
   // 手部拼窗/后处理模式：hard、blend、blend 后生产 UKF+RTS 平滑分别独立缓存。
   state.handMode = meta.default_hand_mode || 'smooth';
+  state.ukf = {...state.ukf,...(meta.default_ukf_params||{})};
   const handModeBtns = document.querySelectorAll('#handModeSeg [data-hand-mode]');
-  const syncHandMode = ()=> handModeBtns.forEach(
-    btn => btn.classList.toggle('on', btn.dataset.handMode === state.handMode));
+  const ukfControls=$('#ukfControls');
+  const syncHandMode = ()=>{
+    handModeBtns.forEach(btn => btn.classList.toggle('on', btn.dataset.handMode === state.handMode));
+    if(ukfControls) ukfControls.hidden=state.handMode!=='smooth';
+  };
   syncHandMode();
   handModeBtns.forEach(btn => btn.onclick = ()=>{
     const next = btn.dataset.handMode;
@@ -454,6 +465,18 @@ async function init(){
     state.handMode = next; syncHandMode(); console.log('[btn] 手部拼窗 → '+state.handMode);
     queueInference('手部拼窗模式已更新，点击 [▶ 开始推理] 应用');
   });
+  const ukfFields=[['#ukfQ','q',0.1,2],['#ukfR','r',0.1,2],['#ukfBeta','beta',0,5]];
+  for(const [selector,key,minimum,maximum] of ukfFields){
+    const input=$(selector); if(!input) continue;
+    input.value=String(state.ukf[key]);
+    input.onchange=()=>{
+      const parsed=Number(input.value);
+      const value=Number.isFinite(parsed)?Math.max(minimum,Math.min(maximum,parsed)):state.ukf[key];
+      state.ukf[key]=Math.round(value*1000)/1000; input.value=String(state.ukf[key]);
+      console.log(`[btn] UKF ${key} → ${state.ukf[key]}`);
+      queueInference(`UKF ${key} 已改为 ${state.ukf[key]}，点击 [▶ 开始推理] 应用`);
+    };
+  }
   // 手形/内参 每帧 vs 平均：只记录选项，不自动加载、不自动推理。
   const _pdef = meta.default_param_mode || 'per_frame';
   for(const [id, key] of [['#gtBetas','gtBetas'],['#predBetas','predBetas'],['#predFov','predFov']]){
@@ -615,7 +638,7 @@ async function loadEpisode(eid, {explicitInference=false}={}){
     // raw=1 → 仅 GT；否则带推理/手部模式和手形/内参参数，后端分别缓存。
     const pq = `&gt_betas=${state.gtBetas}&pred_betas=${state.predBetas}&pred_fov=${state.predFov}`;
     const wq = state.rawOnly ? '?raw=1' :
-      (`?cam_mode=${encodeURIComponent(state.camMode)}&hand_mode=${encodeURIComponent(state.handMode)}${pq}`);
+      (`?cam_mode=${encodeURIComponent(state.camMode)}&hand_mode=${encodeURIComponent(effectiveHandMode())}${pq}`);
     const r = await fetch(U('/api/world/'+eid + wq));
     if(r.status === 409){ state.stopped = true; state.cancelling = false;
       info.textContent = '已停止'; setStep('■ 已停止', 'err'); }
@@ -791,7 +814,7 @@ function _syncExportPanelProgress(sources){
 
 function _worldRenderQuery(){
   const params=new URLSearchParams({
-    layout:state.layout, cam_mode:state.camMode, hand_mode:state.handMode,
+    layout:state.layout, cam_mode:state.camMode, hand_mode:effectiveHandMode(),
     gt_betas:state.gtBetas, pred_betas:state.predBetas, pred_fov:state.predFov,
     coord_mode:state.worldCoordMode,
     show_traj:state.showTraj?'1':'0', show_cam_hand:state.showCamHand?'1':'0',
@@ -889,9 +912,9 @@ function buildPanels(preserveTime){
       pan.video.controls = true;
       const rawq = state.rawOnly ? '&raw=1' : '';
       const camq = state.rawOnly ? '' :
-        `&cam_mode=${encodeURIComponent(state.camMode)}&hand_mode=${encodeURIComponent(state.handMode)}&gt_betas=${state.gtBetas}&pred_betas=${state.predBetas}&pred_fov=${state.predFov}`;
+        `&cam_mode=${encodeURIComponent(state.camMode)}&hand_mode=${encodeURIComponent(effectiveHandMode())}&gt_betas=${state.gtBetas}&pred_betas=${state.predBetas}&pred_fov=${state.predFov}`;
       const bust = state.rawOnly ? 'gt'
-        : encodeURIComponent((CKPT_TAG||'x')+':'+state.camMode+':'+state.handMode+':'+state.gtBetas+state.predBetas+state.predFov);
+        : encodeURIComponent((CKPT_TAG||'x')+':'+state.camMode+':'+effectiveHandMode()+':'+state.gtBetas+state.predBetas+state.predFov);
       const vq = `mode=${encodeURIComponent(state.mode)}&layout=${state.layout}&content=${P.content}${rawq}${camq}`;
       pan.video.src = U(`/video/${state.eid}?${vq}&_=${bust}`);
       pan.video.load();
@@ -960,8 +983,8 @@ function buildPanels(preserveTime){
       const source=state.rawOnly?'gt':'pred';
       const betas=state.rawOnly?state.gtBetas:state.predBetas;
       const fov=state.rawOnly?'per_frame':state.predFov;
-      const mq=`source=${source}&cam_mode=${encodeURIComponent(state.camMode)}&hand_mode=${encodeURIComponent(state.handMode)}&betas=${betas}&fov=${fov}`;
-      sec.innerHTML=`<div class="btitle"><b class="k">${P.name}</b><span class="sub">${source==='gt'?'GT':'Pred'} · 视频相机视角 · 外参与内参对齐整体·2D</span></div>
+      const mq=`source=${source}&cam_mode=${encodeURIComponent(state.camMode)}&hand_mode=${encodeURIComponent(effectiveHandMode())}&betas=${betas}&fov=${fov}`;
+      sec.innerHTML=`<div class="btitle"><b class="k">${P.name}</b><span class="sub">${source==='gt'?'GT':'Pred'} · 共用 Wuji 固定视角 · 起点框 + 实时相机框</span></div>
         <div class="vwrap mujoco-wrap"><video class="mujoco-video" preload="metadata" muted playsinline></video><div class="vbadge">MuJoCo 正在自动渲染…</div></div>`;
       appendPanel(sec,id);
       const video=sec.querySelector('.mujoco-video'), badge=sec.querySelector('.vbadge');
@@ -982,8 +1005,8 @@ function buildPanels(preserveTime){
       const source=state.rawOnly?'gt':'pred';
       const betas=state.rawOnly?state.gtBetas:state.predBetas;
       const fov=state.rawOnly?'per_frame':state.predFov;
-      const rq=`source=${source}&cam_mode=${encodeURIComponent(state.camMode)}&hand_mode=${encodeURIComponent(state.handMode)}&betas=${betas}&fov=${fov}`;
-      sec.innerHTML=`<div class="btitle"><b class="k">${P.name}</b><span class="sub">${source==='gt'?'GT':'模型推理'} 21点 · 原视频相机外参与内参 · 左右手同画面</span></div>
+      const rq=`source=${source}&cam_mode=${encodeURIComponent(state.camMode)}&hand_mode=${encodeURIComponent(effectiveHandMode())}&betas=${betas}&fov=${fov}`;
+      sec.innerHTML=`<div class="btitle"><b class="k">${P.name}</b><span class="sub">${source==='gt'?'GT':'模型推理'} 21点 · 共用 Wuji 固定视角 · 起点框 + 实时相机框</span></div>
         <div class="vwrap mujoco-wrap"><video class="retarget-video" preload="metadata" muted playsinline></video><div class="vbadge">Wuji Hand 正在自动渲染…</div></div>`;
       appendPanel(sec,id);
       const video=sec.querySelector('.retarget-video'), badge=sec.querySelector('.vbadge');
@@ -1396,7 +1419,7 @@ async function exportVideo(){
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         sources:sources.map(item=>item.id), mode:state.mode, layout:state.layout,
-        content:'both', cam_mode:state.camMode, hand_mode:state.handMode,
+        content:'both', cam_mode:state.camMode, hand_mode:effectiveHandMode(),
         gt_betas:state.gtBetas, pred_betas:state.predBetas, pred_fov:state.predFov,
         world_views:state.views.world_motion_3d||null,
         world_coord_mode:state.worldCoordMode,
@@ -1810,11 +1833,11 @@ function renderScene(canvas, items, v, modeKey, video){
 
   // 固定世界画世界轴；相机系画当前 OpenCV 相机轴（光心恒为原点）。
   if((plan.frame==='world' && plan.showCam) || plan.frame==='cam'){
-    const aL=R*0.6, O=proj([0,0,0], null); g.setLineDash([]);
+    const aL=R*0.6, O=proj([0,0,0], null); g.save(); g.setLineDash([]); g.globalAlpha=.48;
     g.lineCap='round';
     [['X',[aL,0,0],'#ff6b6b'],['Y',[0,aL,0],'#51cf66'],['Z',[0,0,aL],'#5c9dff']].forEach(([nm,e,col])=>{
       const P=proj(e,null);
-      g.strokeStyle='#05070a'; g.lineWidth=3;                   // 细描边仍能把坐标轴与网格分开
+      g.strokeStyle='#05070a'; g.lineWidth=2.4;
       g.beginPath(); g.moveTo(O[0],O[1]); g.lineTo(P[0],P[1]); g.stroke();
       g.strokeStyle=col; g.lineWidth=1.35;
       g.beginPath(); g.moveTo(O[0],O[1]); g.lineTo(P[0],P[1]); g.stroke();
@@ -1822,6 +1845,7 @@ function renderScene(canvas, items, v, modeKey, video){
     g.lineCap='butt';
     g.fillStyle='#e6edf3'; g.beginPath(); g.arc(O[0],O[1],3,0,7); g.fill();
     g.fillStyle='#8b98a8'; g.font='11px system-ui'; g.fillText('O', O[0]+5, O[1]-5);
+    g.restore();
   }
 
   const handCol=['#4dd2ff','#ffd34d'];                 // 0=左手(青), 1=右手(金)
@@ -1843,7 +1867,7 @@ function renderScene(canvas, items, v, modeKey, video){
       const Pe=proj(end,null), vx=Pe[0]-Pc[0], vy=Pe[1]-Pc[1], vl=Math.max(1,Math.hypot(vx,vy));
       poseSegments.push({Pe,color});
       const ux=vx/vl, uy=vy/vl, ah=width>=4?9:7;
-      g.save(); g.lineCap='round'; g.lineJoin='round'; g.setLineDash(pattern||[]);
+      g.save(); g.globalAlpha=.58; g.lineCap='round'; g.lineJoin='round'; g.setLineDash(pattern||[]);
       g.strokeStyle='#05070a'; g.lineWidth=width+4;
       g.beginPath(); g.moveTo(Pc[0],Pc[1]); g.lineTo(Pe[0],Pe[1]); g.stroke();
       g.strokeStyle=color; g.lineWidth=width; g.shadowColor=color; g.shadowBlur=6;
@@ -1853,25 +1877,25 @@ function renderScene(canvas, items, v, modeKey, video){
       g.lineTo(Pe[0]-ux*ah+uy*ah*.52,Pe[1]-uy*ah-ux*ah*.52); g.closePath(); g.fill();
       g.shadowBlur=0; g.font=`bold ${width>=4?11:10}px system-ui`; const tw=g.measureText(text).width;
       let lx=Math.max(3,Math.min(W-tw-7,Pe[0]+4)), ly=Math.max(12,Math.min(H-8,Pe[1]-4));
-      g.globalAlpha=.9; g.fillStyle='#05070a'; g.fillRect(lx-3,ly-10,tw+6,14);
-      g.globalAlpha=1; g.fillStyle=color; g.fillText(text,lx,ly); g.restore();
+      g.globalAlpha=.68; g.fillStyle='#05070a'; g.fillRect(lx-3,ly-10,tw+6,14);
+      g.globalAlpha=.72; g.fillStyle=color; g.fillText(text,lx,ly); g.restore();
     };
-    // 相机是辅助参照，姿态轴统一用虚线，避免与实体手骨架混淆。
-    const cameraDash=[6,4];
+    // 相机姿态轴用低透明实线：方向连续可读，同时不压过手部与渐变轨迹。
+    const cameraDash=[];
     drawPoseArrow(right,axisLen,poseColor.x,'右 / +Xc',2.4,cameraDash);
     drawPoseArrow(up,axisLen,poseColor.y,'上 / -Yc',2.4,cameraDash);
     drawPoseArrow(view,viewLen,poseColor.z,'视线 / +Zc',3.2,cameraDash);
     g.save();
-    // 光心也使用虚线框；不再填充，保持“相机为辅助参照”的语义。
+    // 光心也使用低透明实线框，不填充，保持“相机为辅助参照”的语义。
     const size=(isPred?16:12)*v.zoom, bx=Pc[0]-size/2, by=Pc[1]-size/2;
-    g.setLineDash(cameraDash); g.strokeStyle='#05070a'; g.lineWidth=2.6; g.strokeRect(bx,by,size,size);
+    g.globalAlpha=.55; g.setLineDash(cameraDash); g.strokeStyle='#05070a'; g.lineWidth=2.6; g.strokeRect(bx,by,size,size);
     g.strokeStyle=markerColor; g.lineWidth=1.2; g.strokeRect(bx,by,size,size);
     g.restore();
 
-    // 只在方块遮住的范围内把姿态轴重绘成短虚线，形成透视效果。
+    // 在方块遮住的范围内重绘姿态轴，形成透视效果。
     g.save(); g.beginPath(); g.rect(bx,by,size,size); g.clip(); g.lineCap='round';
     for(const seg of poseSegments){
-      g.setLineDash([2,2]);
+      g.setLineDash([]); g.globalAlpha=.58;
       g.strokeStyle='#05070a'; g.lineWidth=4;
       g.beginPath(); g.moveTo(Pc[0],Pc[1]); g.lineTo(seg.Pe[0],seg.Pe[1]); g.stroke();
       g.strokeStyle=seg.color; g.lineWidth=2;

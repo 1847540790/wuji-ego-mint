@@ -27,6 +27,8 @@ from .const import (
 
 import re as _re
 _ANSI = _re.compile(r"\x1b\[[0-9;]*[A-Za-z]")   # 去 \033[K 等 ANSI(面板 <pre> 里会显成乱码)
+_EXPORT_TILE_SIZE = (960, 540)
+_EXPORT_COMPOSE_TAG = "equal_960x540_tiles_v3"
 
 
 def _benchmark_progress_timing(progress: dict, *, running: bool,
@@ -2070,8 +2072,9 @@ class Store:
     def pred(self, eid: int, cam_mode: str = DEFAULT_CAM_MODE,
              hand_mode: str = DEFAULT_HAND_MODE) -> dict:
         # full 没有手部拼窗，hard/blend 可共享；smooth 仍会执行后处理，必须独立缓存。
-        effective_hand_mode = (DEFAULT_HAND_MODE
-                               if cam_mode == "full" and hand_mode != "smooth"
+        is_smooth = str(hand_mode).startswith("smooth")
+        effective_hand_mode = ("hard"
+                               if cam_mode == "full" and not is_smooth
                                else hand_mode)
         k = (eid, cam_mode, effective_hand_mode)
         if k not in self._pred:
@@ -2353,7 +2356,7 @@ class Store:
             fov_mean = False
         return (int(eid), str(source), str(cam_mode), str(hand_mode),
                 bool(betas_mean), bool(fov_mean),
-                f"ego_grid_v5_w{ROBOT_RENDER_WIDTH}")
+                f"shared_wuji_camera_v8_start_live_line_w{ROBOT_RENDER_WIDTH}")
 
     def mujoco_progress(self, eid: int, source: str,
                         cam_mode: str = DEFAULT_CAM_MODE,
@@ -2448,6 +2451,7 @@ class Store:
                             intrinsics=intrinsics,
                             image_size=(width, height),
                             width=ROBOT_RENDER_WIDTH,
+                            view="third",
                             on_step=report_step,
                         )
 
@@ -2471,7 +2475,7 @@ class Store:
             fov_mean = False
         return (int(eid), str(source), str(cam_mode), str(hand_mode),
                 bool(betas_mean), bool(fov_mean),
-                f"wuji_hand_camera_v6_w{ROBOT_RENDER_WIDTH}")
+                f"shared_wuji_camera_v8_start_live_line_w{ROBOT_RENDER_WIDTH}")
 
     def retarget_progress(self, eid: int, source: str,
                           cam_mode: str = DEFAULT_CAM_MODE,
@@ -2512,7 +2516,7 @@ class Store:
                        betas_mean: bool = False,
                        fov_mean: bool = False,
                        on_step=None) -> Path:
-        """Render retargeted first-generation Wuji Hand through the source camera."""
+        """Render the retargeted Wuji Hand from a fitted fixed third-person camera."""
         if source not in {"gt", "pred"}:
             raise ValueError(f"未知 Wuji retargeting 数据源: {source}")
         key = self.retarget_key(
@@ -2579,13 +2583,13 @@ class Store:
         return self._retarget_mp4[key]
 
     def _compose_export(self, inputs: list[tuple[str, Path]]) -> Path:
-        """Compose already rendered MP4s without replaying them in the browser."""
+        """Normalize every source to one exact 960x540 tile, then compose it."""
         import subprocess
 
         if not inputs:
             raise ValueError("至少选择一路导出画面")
         paths = []
-        signature = []
+        signature = [_EXPORT_COMPOSE_TAG]
         for source_id, path in inputs:
             path = Path(path)
             if not path.is_file():
@@ -2594,9 +2598,6 @@ class Store:
             paths.append(path)
             signature.append(
                 f"{source_id}:{path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}")
-        if len(paths) == 1:
-            return paths[0]
-
         digest = hashlib.sha256("\n".join(signature).encode()).hexdigest()[:20]
         source_tag = "_".join(source_id for source_id, _path in inputs)
         output_dir = Path(self.cache_dir) / "exports"
@@ -2611,15 +2612,19 @@ class Store:
             command = ["ffmpeg", "-y", "-loglevel", "error"]
             for path in paths:
                 command.extend(["-i", str(path)])
+            tile_width, tile_height = _EXPORT_TILE_SIZE
             filters = [
                 f"[{index}:v]setpts=PTS-STARTPTS,"
-                "scale=960:540:force_original_aspect_ratio=decrease,"
-                "pad=960:540:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+                f"scale={tile_width}:{tile_height}:force_original_aspect_ratio=decrease,"
+                f"pad={tile_width}:{tile_height}:(ow-iw)/2:(oh-ih)/2:black,"
+                f"setsar=1,setdar={tile_width}/{tile_height}"
                 f"[v{index}]"
                 for index in range(len(paths))
             ]
             streams = "".join(f"[v{index}]" for index in range(len(paths)))
-            if len(paths) == 4:
+            if len(paths) == 1:
+                filters.append("[v0]null[vout]")
+            elif len(paths) == 4:
                 filters.append(
                     f"{streams}xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0:"
                     "fill=black:shortest=1[vout]")

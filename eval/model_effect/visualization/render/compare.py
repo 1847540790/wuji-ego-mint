@@ -329,7 +329,8 @@ def render_2d(raw: dict, pred: dict, out_path, *,
 def render_gt_overlay(raw: dict, out_path, *,
                       mode: str = "mesh_skel", alpha: float = 0.6,
                       fps: float = 30.0, progress: bool = True, on_step=None,
-                      betas_mean: bool = False, gt_world_data=None) -> Path:
+                      betas_mean: bool = False, gt_world_data=None,
+                      label_text: str = "GT") -> Path:
     """单 episode「仅 GT」overlay mp4（GT 手 + GT 相机，不涉及任何模型预测），写完转 H.264。
 
     供网页端「仅原始数据」模式用：只看原始标注的手/相机重投影效果，无需 ckpt / 不跑推理。
@@ -354,8 +355,8 @@ def render_gt_overlay(raw: dict, out_path, *,
         sides = panel_sides(gt_world, i, gt_kept[i, 0], gt_kept[i, 1])
         panel = draw.render_frame(to_bgr(frames[i]), gt_c2w[i], gt_K, sides,
                                   faces_lr, mode=mode, alpha=alpha)
-        draw.label(panel, "GT")
-        draw.presence_label(panel, [("GT", gt_kept[i, 0], gt_kept[i, 1])])
+        draw.label(panel, label_text)
+        draw.presence_label(panel, [(label_text, gt_kept[i, 0], gt_kept[i, 1])])
         return panel
 
     _write_rendered_frames(

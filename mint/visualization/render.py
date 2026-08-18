@@ -96,6 +96,7 @@ def render_prediction(
     mode: str = "mesh_skel",
     alpha: float = 0.62,
     progress=None,
+    label_text: str = "MINT / PREDICTION",
 ) -> Path:
     """Render a single prediction overlay without loading or displaying ground truth."""
     output = Path(output_path)
@@ -119,7 +120,7 @@ def render_prediction(
             rendered = draw.render_frame(
                 frame_bgr, camera_c2w[index], camera_k, sides, faces, mode=mode, alpha=alpha
             )
-            draw.label(rendered, "MINT / PREDICTION")
+            draw.label(rendered, label_text)
             writer.write(rendered)
             if progress is not None:
                 progress(index + 1, frame_count)
@@ -146,4 +147,3 @@ def trajectory_payload(frames_rgb: np.ndarray, prediction: dict, max_points: int
         "left_visible": visible[indices, 0].tolist(),
         "right_visible": visible[indices, 1].tolist(),
     }
-
