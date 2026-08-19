@@ -96,6 +96,7 @@ def render_world_video(world: dict, cam_c2w: np.ndarray, kept: np.ndarray,
                        image_size: tuple[int, int] | None = None,
                        width: int = 960, height: int | None = None,
                        view: str = "third",
+                       label_text: str | None = None,
                        on_step=None) -> Path:
     """Render one GT or prediction from a fixed full-motion third-person view."""
     from . import draw, mujoco_scene
@@ -145,23 +146,14 @@ def render_world_video(world: dict, cam_c2w: np.ndarray, kept: np.ndarray,
         copied["left"]["joints"].reshape(-1, 3),
         copied["right"]["joints"].reshape(-1, 3),
     ], axis=0)
-    upright = _upright_rotation(cameras, hand_points)
+    upright, origin, cameras = mujoco_scene.canonicalize_robot_coordinates(
+        cameras, hand_points)
     for side in ("left", "right"):
         copied[side]["verts"] = copied[side]["verts"] @ upright.T
         copied[side]["joints"] = copied[side]["joints"] @ upright.T
-    cameras[:, :3, :3] = upright[None] @ cameras[:, :3, :3]
-    cameras[:, :3, 3] = cameras[:, :3, 3] @ upright.T
-
-    rotated_points = np.concatenate([
-        copied["left"]["joints"].reshape(-1, 3),
-        copied["right"]["joints"].reshape(-1, 3),
-    ], axis=0)
-    rotated_points = rotated_points[np.all(np.isfinite(rotated_points), axis=1)]
-    origin = np.median(rotated_points, axis=0) if len(rotated_points) else np.zeros(3)
     for side in ("left", "right"):
         copied[side]["verts"] -= origin
         copied[side]["joints"] -= origin
-    cameras[:, :3, 3] -= origin
 
     vertices_left = copied["left"]["verts"]
     vertices_right = copied["right"]["verts"]
@@ -194,7 +186,14 @@ def render_world_video(world: dict, cam_c2w: np.ndarray, kept: np.ndarray,
         forward_azimuth = (float(np.arctan2(forward_xy[1], forward_xy[0]))
                            if np.linalg.norm(forward_xy) > 1e-6 else 0.0)
         # Web 画面不放桌面/操作垫；地面固定为世界 XY 水平面，并与手留出距离。
-        scene.place_floor(hand_finite, margin=_WEB_FLOOR_CLEARANCE, fwd_az=None)
+        # Use hands for the contact height, but include the full camera path
+        # when sizing the shared ground so MuJoCo and Wuji show the same extent.
+        scene.place_floor(
+            hand_finite, margin=_WEB_FLOOR_CLEARANCE, fwd_az=None,
+            extent_points=np.concatenate([
+                hand_finite,
+                cameras[:, :3, 3][np.all(np.isfinite(cameras[:, :3, 3]), axis=1)],
+            ], axis=0))
         scene.fit_fixed_third_camera(
             np.asarray([0.0, 0.0, 1.0]), hand_finite, cameras)
 
@@ -239,7 +238,10 @@ def render_world_video(world: dict, cam_c2w: np.ndarray, kept: np.ndarray,
             else:
                 image = scene.render_free(
                     azimuth, elevation, None, frame, draw_trail=False)
-            writer.write(np.ascontiguousarray(image[:, :, ::-1]))
+            image_bgr = np.ascontiguousarray(image[:, :, ::-1])
+            if label_text:
+                draw.label(image_bgr, str(label_text))
+            writer.write(image_bgr)
             if on_step is not None:
                 on_step(frame + 1, frames)
         writer.close()

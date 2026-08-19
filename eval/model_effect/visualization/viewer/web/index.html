@@ -126,14 +126,14 @@
       <span id="exportPicker" class="export-picker">
         <button id="exportBtn" class="export-action" type="button" aria-expanded="false"
                 aria-haspopup="true" aria-controls="exportSourcesMenu"
-                title="导出所选画面；MuJoCo 与 Retargeting 需先手动开启面板才会渲染">导出选中 2 路</button>
+                title="默认选择四类画面；有 GT 时展开为两排八格，单格跟随原视频尺寸">导出选中 4 路</button>
         <span id="exportSourcesMenu" class="export-sources-menu" role="group" aria-label="导出范围" hidden>
           <span class="export-sources-title">导出范围 · 选择画面</span>
           <label><input type="checkbox" data-export-source="both_2d" checked>原视频渲染</label>
           <label><input type="checkbox" data-export-source="world_motion_3d" checked>固定世界 · 3D（跟随视频）</label>
-          <label><input type="checkbox" data-export-source="mujoco_3d">MuJoCo · 仿真</label>
-          <label><input type="checkbox" data-export-source="wuji_retarget_3d">Wuji Hand · Retargeting</label>
-          <span class="export-sources-hint">MuJoCo / Retargeting 先手动开启才会渲染；导出可复用已完成缓存</span>
+          <label><input type="checkbox" data-export-source="mujoco_3d" checked>MuJoCo · 仿真</label>
+          <label><input type="checkbox" data-export-source="wuji_retarget_3d" checked>Wuji Hand · Retargeting</label>
+          <span class="export-sources-hint">有 GT 时两排八格：2D、3D、MuJoCo、Wuji 均为 GT/PRED</span>
         </span>
       </span>
       <span id="exportProgress" class="export-progress" role="progressbar" aria-label="导出进度"

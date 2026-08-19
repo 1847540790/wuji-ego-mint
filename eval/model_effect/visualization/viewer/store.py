@@ -28,7 +28,31 @@ from .const import (
 import re as _re
 _ANSI = _re.compile(r"\x1b\[[0-9;]*[A-Za-z]")   # 去 \033[K 等 ANSI(面板 <pre> 里会显成乱码)
 _EXPORT_TILE_SIZE = (960, 540)
-_EXPORT_COMPOSE_TAG = "equal_960x540_tiles_v3"
+_EXPORT_GRID_COLUMNS = 4
+_EXPORT_COMPOSE_TAG = "source_sized_tiles_v7_four_columns_two_rows"
+
+
+def _export_grid_layout(count: int, tile_width: int, tile_height: int):
+    """Return ffmpeg xstack positions and the resulting canvas size."""
+    if count < 1:
+        raise ValueError("导出网格至少需要一个画面")
+    columns = min(_EXPORT_GRID_COLUMNS, int(count))
+    rows = (int(count) + columns - 1) // columns
+    layout = "|".join(
+        f"{(index % columns) * tile_width}_{(index // columns) * tile_height}"
+        for index in range(int(count)))
+    return layout, (columns * tile_width, rows * tile_height)
+
+
+def _robot_render_size(render_size: tuple[int, int] | None) -> tuple[int, int | None]:
+    if render_size is None:
+        return ROBOT_RENDER_WIDTH, None
+    if not isinstance(render_size, (tuple, list)) or len(render_size) != 2:
+        raise ValueError("机器人渲染尺寸应为 (width, height)")
+    width, height = map(int, render_size)
+    if width < 4 or height < 4:
+        raise ValueError("机器人渲染尺寸过小")
+    return width + width % 2, height + height % 2
 
 
 def _benchmark_progress_timing(progress: dict, *, running: bool,
@@ -1577,7 +1601,7 @@ class Store:
 
     # ---- 模型/资产后台懒加载：网页先起，慢慢加载；首次推理前 ensure 阻塞等就绪 ----
     def ensure_assets(self) -> None:
-        """确保 MANO 权重就绪（幂等、线程安全）。payload 一开头就调，供 GT/Pred 世界系解算用。"""
+        """确保 MANO 权重就绪（幂等、线程安全）。payload 一开头就调，供 GT/PRED 世界系解算用。"""
         if self._assets_ready.is_set():
             return
         with self._assets_lock:
@@ -2232,7 +2256,9 @@ class Store:
                         gt_betas_mean: bool = False,
                         pred_betas_mean: bool = False,
                         pred_fov_mean: bool = False,
-                        raw: bool = False) -> tuple:
+                        raw: bool = False,
+                        render_source: str = "both",
+                        render_size: tuple[int, int] | None = None) -> tuple:
         from ..render.fixed_world_video import (
             CACHE_TAG, normalize_coord_mode, view_cache_tuple,
         )
@@ -2240,12 +2266,17 @@ class Store:
         if raw:
             cam_mode, hand_mode = "gt", "gt"
             gt_betas_mean = pred_betas_mean = pred_fov_mean = False
+            render_source = "gt"
+        if render_source not in {"both", "gt", "pred"}:
+            raise ValueError(f"未知固定世界数据源: {render_source}")
+        size_key = None if render_size is None else tuple(map(int, render_size))
         return (
             int(eid), bool(raw), str(cam_mode), str(hand_mode),
             bool(gt_betas_mean), bool(pred_betas_mean), bool(pred_fov_mean),
             "side" if layout == "side" else "overlay",
             view_cache_tuple(views), normalize_coord_mode(coord_mode),
-            bool(show_traj), bool(show_cam_hand), CACHE_TAG,
+            bool(show_traj), bool(show_cam_hand), str(render_source), size_key,
+            CACHE_TAG,
         )
 
     def world_video_progress(self, eid: int, **options) -> dict:
@@ -2257,19 +2288,22 @@ class Store:
     def _world_output_path(self, key: tuple) -> Path:
         (eid, raw, cam_mode, hand_mode, gt_betas_mean, pred_betas_mean,
          pred_fov_mean, layout, view_key, coord_mode,
-         show_traj, show_cam_hand, tag) = key
+         show_traj, show_cam_hand, render_source, render_size, tag) = key
         raw_data = self.raw(eid)
         mode_tag = "gt" if raw else (
             f"{self.ckpt_tag}_{cam_mode}_{hand_mode}_"
             f"{int(gt_betas_mean)}{int(pred_betas_mean)}{int(pred_fov_mean)}"
         )
+        size_tag = ("default" if render_size is None
+                    else f"{render_size[0]}x{render_size[1]}")
         view_digest = hashlib.sha256(repr(
-            (layout, view_key, coord_mode, show_traj, show_cam_hand, tag)).encode()
+            (layout, view_key, coord_mode, show_traj, show_cam_hand,
+             render_source, size_tag, tag)).encode()
         ).hexdigest()[:16]
         return self.cache_dir / (
             f"{self.scene}_{self._item_cache_tag(eid)}_"
             f"ep{int(raw_data['episode_index']):03d}_fixed_world_"
-            f"{mode_tag}_{view_digest}.mp4"
+            f"{mode_tag}_{render_source}_{size_tag}_{view_digest}.mp4"
         )
 
     def _cached_world_video(self, key: tuple) -> Path | None:
@@ -2292,7 +2326,9 @@ class Store:
                     pred_betas_mean: bool = False,
                     pred_fov_mean: bool = False,
                     raw: bool = False,
-                    on_step=None) -> Path:
+                    on_step=None,
+                    render_source: str = "both",
+                    render_size: tuple[int, int] | None = None) -> Path:
         """Render the fixed-world Canvas timeline only when explicitly requested."""
         options = {
             "layout": layout,
@@ -2306,6 +2342,8 @@ class Store:
             "pred_betas_mean": pred_betas_mean,
             "pred_fov_mean": pred_fov_mean,
             "raw": raw,
+            "render_source": render_source,
+            "render_size": render_size,
         }
         key = self.world_video_key(eid, **options)
         cached = self._cached_world_video(key)
@@ -2318,6 +2356,11 @@ class Store:
             payload = self.payload_gt(eid) if raw else self.payload(
                 eid, cam_mode, hand_mode,
                 gt_betas_mean, pred_betas_mean, pred_fov_mean)
+            effective_source = "gt" if raw else render_source
+            if effective_source == "gt":
+                payload = {**payload, "pred": None}
+            elif effective_source == "pred":
+                payload = {**payload, "gt": None}
             frames = int(payload.get("nframes") or 0)
             output = self._world_output_path(key)
             self.set_world_prog(key, stage="queued", done=0, total=frames)
@@ -2335,6 +2378,8 @@ class Store:
                     payload, output, fps=self.item_fps(eid),
                     layout=layout, views=views, coord_mode=coord_mode,
                     show_traj=show_traj, show_cam_hand=show_cam_hand,
+                    size=(tuple(map(int, render_size))
+                          if render_size is not None else (960, 540)),
                     on_step=report_step,
                 )
                 if not output.is_file() or output.stat().st_size == 0:
@@ -2350,13 +2395,17 @@ class Store:
     def mujoco_key(eid: int, source: str, cam_mode: str = DEFAULT_CAM_MODE,
                    hand_mode: str = DEFAULT_HAND_MODE,
                    betas_mean: bool = False,
-                   fov_mean: bool = False) -> tuple:
+                   fov_mean: bool = False,
+                   render_size: tuple[int, int] | None = None) -> tuple:
         if source == "gt":
             cam_mode, hand_mode = "gt", "gt"
             fov_mean = False
+        render_width, render_height = _robot_render_size(render_size)
+        size_tag = (f"w{render_width}" if render_height is None
+                    else f"w{render_width}h{render_height}")
         return (int(eid), str(source), str(cam_mode), str(hand_mode),
                 bool(betas_mean), bool(fov_mean),
-                f"shared_wuji_camera_v8_start_live_line_w{ROBOT_RENDER_WIDTH}")
+                f"shared_wuji_camera_v13_canonical_origin_{size_tag}")
 
     def mujoco_progress(self, eid: int, source: str,
                         cam_mode: str = DEFAULT_CAM_MODE,
@@ -2396,12 +2445,13 @@ class Store:
                      hand_mode: str = DEFAULT_HAND_MODE,
                      betas_mean: bool = False,
                      fov_mean: bool = False,
-                     on_step=None) -> Path:
+                     on_step=None,
+                     render_size: tuple[int, int] | None = None) -> Path:
         """Render the selected GT/prediction through MuJoCo only when requested."""
         if source not in {"gt", "pred"}:
             raise ValueError(f"未知 MuJoCo 数据源: {source}")
         key = self.mujoco_key(
-            eid, source, cam_mode, hand_mode, betas_mean, fov_mean)
+            eid, source, cam_mode, hand_mode, betas_mean, fov_mean, render_size)
         cached = self._cached_mujoco_video(key)
         if cached is not None:
             return cached
@@ -2445,13 +2495,16 @@ class Store:
                             on_step(int(done), int(total))
 
                     def render_temporary(temporary):
+                        render_width, render_height = _robot_render_size(render_size)
                         render_world_video(
                             world, cameras, kept, temporary,
                             fps=self.item_fps(eid),
                             intrinsics=intrinsics,
                             image_size=(width, height),
-                            width=ROBOT_RENDER_WIDTH,
+                            width=render_width,
+                            height=render_height,
                             view="third",
+                            label_text="GT" if source == "gt" else "PRED",
                             on_step=report_step,
                         )
 
@@ -2469,13 +2522,17 @@ class Store:
                      cam_mode: str = DEFAULT_CAM_MODE,
                      hand_mode: str = DEFAULT_HAND_MODE,
                      betas_mean: bool = False,
-                     fov_mean: bool = False) -> tuple:
+                     fov_mean: bool = False,
+                     render_size: tuple[int, int] | None = None) -> tuple:
         if source == "gt":
             cam_mode, hand_mode = "gt", "gt"
             fov_mean = False
+        render_width, render_height = _robot_render_size(render_size)
+        size_tag = (f"w{render_width}" if render_height is None
+                    else f"w{render_width}h{render_height}")
         return (int(eid), str(source), str(cam_mode), str(hand_mode),
                 bool(betas_mean), bool(fov_mean),
-                f"shared_wuji_camera_v8_start_live_line_w{ROBOT_RENDER_WIDTH}")
+                f"shared_wuji_camera_v13_no_presence_hud_{size_tag}")
 
     def retarget_progress(self, eid: int, source: str,
                           cam_mode: str = DEFAULT_CAM_MODE,
@@ -2515,12 +2572,13 @@ class Store:
                        hand_mode: str = DEFAULT_HAND_MODE,
                        betas_mean: bool = False,
                        fov_mean: bool = False,
-                       on_step=None) -> Path:
+                       on_step=None,
+                       render_size: tuple[int, int] | None = None) -> Path:
         """Render the retargeted Wuji Hand from a fitted fixed third-person camera."""
         if source not in {"gt", "pred"}:
             raise ValueError(f"未知 Wuji retargeting 数据源: {source}")
         key = self.retarget_key(
-            eid, source, cam_mode, hand_mode, betas_mean, fov_mean)
+            eid, source, cam_mode, hand_mode, betas_mean, fov_mean, render_size)
         cached = self._cached_retarget_video(key)
         if cached is not None:
             return cached
@@ -2565,11 +2623,14 @@ class Store:
                             on_step(int(done), int(total))
 
                     def render_temporary(temporary):
+                        render_width, render_height = _robot_render_size(render_size)
                         render_wuji_hand_video(
                             world, cameras, kept, temporary,
                             fps=self.item_fps(eid), intrinsics=intrinsics,
                             image_size=(width, height),
-                            width=ROBOT_RENDER_WIDTH,
+                            width=render_width,
+                            height=render_height,
+                            label_text="GT" if source == "gt" else "PRED",
                             on_step=report_step,
                         )
 
@@ -2582,14 +2643,20 @@ class Store:
                 key, stage="done", done=frames, total=frames)
         return self._retarget_mp4[key]
 
-    def _compose_export(self, inputs: list[tuple[str, Path]]) -> Path:
-        """Normalize every source to one exact 960x540 tile, then compose it."""
+    def _compose_export(self, inputs: list[tuple[str, Path]], *,
+                        tile_size: tuple[int, int] = _EXPORT_TILE_SIZE) -> Path:
+        """Fit every source into equal source-sized tiles, up to four per row."""
         import subprocess
 
         if not inputs:
             raise ValueError("至少选择一路导出画面")
         paths = []
-        signature = [_EXPORT_COMPOSE_TAG]
+        tile_width, tile_height = map(int, tile_size)
+        if tile_width < 2 or tile_height < 2:
+            raise ValueError("导出单格尺寸无效")
+        tile_width += tile_width % 2
+        tile_height += tile_height % 2
+        signature = [_EXPORT_COMPOSE_TAG, f"tile={tile_width}x{tile_height}"]
         for source_id, path in inputs:
             path = Path(path)
             if not path.is_file():
@@ -2612,7 +2679,6 @@ class Store:
             command = ["ffmpeg", "-y", "-loglevel", "error"]
             for path in paths:
                 command.extend(["-i", str(path)])
-            tile_width, tile_height = _EXPORT_TILE_SIZE
             filters = [
                 f"[{index}:v]setpts=PTS-STARTPTS,"
                 f"scale={tile_width}:{tile_height}:force_original_aspect_ratio=decrease,"
@@ -2621,16 +2687,15 @@ class Store:
                 f"[v{index}]"
                 for index in range(len(paths))
             ]
-            streams = "".join(f"[v{index}]" for index in range(len(paths)))
             if len(paths) == 1:
                 filters.append("[v0]null[vout]")
-            elif len(paths) == 4:
-                filters.append(
-                    f"{streams}xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0:"
-                    "fill=black:shortest=1[vout]")
             else:
+                streams = "".join(f"[v{index}]" for index in range(len(paths)))
+                grid, _canvas_size = _export_grid_layout(
+                    len(paths), tile_width, tile_height)
                 filters.append(
-                    f"{streams}hstack=inputs={len(paths)}:shortest=1[vout]")
+                    f"{streams}xstack=inputs={len(paths)}:layout={grid}:"
+                    "fill=black:shortest=1[vout]")
             temp_path = output_dir / f".{source_tag}_{digest}.tmp.mp4"
             command.extend([
                 "-filter_complex", ";".join(filters), "-map", "[vout]", "-an",
@@ -2679,7 +2744,11 @@ class Store:
             if on_progress is not None:
                 on_progress(values)
 
+        raw_data = self.raw(eid)
+        frame_height, frame_width = map(int, raw_data["frames"].shape[1:3])
+        export_tile_size = (frame_width, frame_height)
         source = "gt" if raw else "pred"
+        compare_sources = not raw and not self.is_no_truth(eid)
         source_count = len(ordered)
         source_fractions = [0.0] * source_count
         source_states = [
@@ -2734,40 +2803,119 @@ class Store:
                     frame_done=done, frame_total=total,
                     message=f"正在渲染 {current_label}：{done}/{total} 帧")
 
+            def paired_phase_step(phase, phase_label):
+                def report(done, total, *, index=source_index,
+                           current_id=source_id, current_label=label):
+                    total = max(1, int(total))
+                    done = max(0, min(int(done), total))
+                    combined_done = phase * total + done
+                    combined_total = total * 2
+                    update_source(
+                        index, 0.48 * (phase + done / total),
+                        source_id=current_id, label=current_label,
+                        frame_done=combined_done, frame_total=combined_total,
+                        message=(f"正在渲染 {current_label} {phase_label}："
+                                 f"{done}/{total} 帧"))
+                return report
+
+            def paired_result(gt_path, pred_path):
+                update_source(
+                    source_index, 0.96, source_id=source_id, label=label,
+                    message=f"{label} GT/PRED 已渲染")
+                return [
+                    (f"{source_id}_gt", gt_path),
+                    (f"{source_id}_pred", pred_path),
+                ]
+
+            def robot_comparison(render):
+                gt_path = render(
+                    eid, "gt", cam_mode, hand_mode, gt_betas_mean, False,
+                    on_step=paired_phase_step(0, "GT"),
+                    render_size=export_tile_size)
+                update_source(
+                    source_index, 0.48, source_id=source_id, label=label,
+                    message=f"{label} GT 已完成，正在准备 PRED")
+                pred_path = render(
+                    eid, "pred", cam_mode, hand_mode,
+                    pred_betas_mean, pred_fov_mean,
+                    on_step=paired_phase_step(1, "PRED"),
+                    render_size=export_tile_size)
+                return paired_result(gt_path, pred_path)
+
+            def single_world_views(which):
+                views = dict(world_views or {})
+                source_view = views.get("vgt" if which == "gt" else "vpred")
+                if not isinstance(source_view, dict):
+                    source_view = views.get("vov")
+                if isinstance(source_view, dict):
+                    views["vov"] = source_view
+                return views
+
             update_source(
                 source_index, 0.0, source_id=source_id, label=label,
                 message=f"正在准备第 {source_index + 1}/{source_count} 路：{label}")
             if source_id == "both_2d":
-                path = self.mp4_gt(eid, mode, on_step=source_step) if raw else self.mp4(
-                    eid, mode, layout, content, cam_mode, hand_mode,
-                    gt_betas_mean, pred_betas_mean, pred_fov_mean,
-                    on_step=source_step)
+                if compare_sources:
+                    gt_path = self.mp4_gt(
+                        eid, mode, on_step=paired_phase_step(0, "GT"),
+                        betas_mean=gt_betas_mean)
+                    pred_path = self.mp4_pred(
+                        eid, mode, cam_mode, hand_mode,
+                        pred_betas_mean, pred_fov_mean,
+                        on_step=paired_phase_step(1, "PRED"))
+                    path = paired_result(gt_path, pred_path)
+                else:
+                    path = (self.mp4_gt(
+                        eid, mode, on_step=source_step,
+                        betas_mean=gt_betas_mean) if raw else self.mp4_pred(
+                            eid, mode, cam_mode, hand_mode,
+                            pred_betas_mean, pred_fov_mean,
+                            on_step=source_step))
             elif source_id == "world_motion_3d":
-                path = self.world_video(
-                    eid, layout=layout, views=world_views,
-                    coord_mode=world_coord_mode,
-                    show_traj=show_traj, show_cam_hand=show_cam_hand,
-                    cam_mode=cam_mode, hand_mode=hand_mode,
-                    gt_betas_mean=gt_betas_mean,
-                    pred_betas_mean=pred_betas_mean,
-                    pred_fov_mean=pred_fov_mean, raw=raw,
-                    on_step=source_step)
+                world_options = {
+                    "layout": "overlay", "coord_mode": world_coord_mode,
+                    "show_traj": show_traj, "show_cam_hand": show_cam_hand,
+                    "cam_mode": cam_mode, "hand_mode": hand_mode,
+                    "gt_betas_mean": gt_betas_mean,
+                    "pred_betas_mean": pred_betas_mean,
+                    "pred_fov_mean": pred_fov_mean,
+                    "render_size": export_tile_size,
+                }
+                if compare_sources:
+                    gt_path = self.world_video(
+                        eid, views=single_world_views("gt"),
+                        render_source="gt", raw=False,
+                        on_step=paired_phase_step(0, "GT"), **world_options)
+                    pred_path = self.world_video(
+                        eid, views=single_world_views("pred"),
+                        render_source="pred", raw=False,
+                        on_step=paired_phase_step(1, "PRED"), **world_options)
+                    path = paired_result(gt_path, pred_path)
+                else:
+                    path = self.world_video(
+                        eid, views=world_views,
+                        render_source="gt" if raw else "pred", raw=raw,
+                        on_step=source_step, **world_options)
             elif source_id == "mujoco_3d":
-                path = self.mujoco_video(
-                    eid, source, cam_mode, hand_mode,
-                    gt_betas_mean if raw else pred_betas_mean,
-                    False if raw else pred_fov_mean,
-                    on_step=source_step)
+                path = (robot_comparison(self.mujoco_video)
+                        if compare_sources else self.mujoco_video(
+                            eid, source, cam_mode, hand_mode,
+                            gt_betas_mean if raw else pred_betas_mean,
+                            False if raw else pred_fov_mean,
+                            on_step=source_step,
+                            render_size=export_tile_size))
             else:
-                path = self.retarget_video(
-                    eid, source, cam_mode, hand_mode,
-                    gt_betas_mean if raw else pred_betas_mean,
-                    False if raw else pred_fov_mean,
-                    on_step=source_step)
+                path = (robot_comparison(self.retarget_video)
+                        if compare_sources else self.retarget_video(
+                            eid, source, cam_mode, hand_mode,
+                            gt_betas_mean if raw else pred_betas_mean,
+                            False if raw else pred_fov_mean,
+                            on_step=source_step,
+                            render_size=export_tile_size))
             update_source(
                 source_index, 1.0, source_id=source_id, label=label,
                 message=f"第 {source_index + 1}/{source_count} 路已完成：{label}")
-            return source_id, path
+            return path if isinstance(path, list) else [(source_id, path)]
 
         rendered_by_index = [None] * source_count
         remaining_indices = list(range(source_count))
@@ -2786,21 +2934,22 @@ class Store:
                 }
                 for future in as_completed(futures):
                     rendered_by_index[futures[future]] = future.result()
-        rendered = [item for item in rendered_by_index if item is not None]
+        rendered = [item for group in rendered_by_index if group for item in group]
         emit(stage="compose", progress=0.92, source_index=source_count,
              source_total=source_count, message="所选画面渲染完成，正在合成导出视频")
-        output = self._compose_export(rendered)
+        output = self._compose_export(rendered, tile_size=export_tile_size)
         emit(stage="done", progress=1.0, source_index=source_count,
              source_total=source_count, message="导出视频已生成")
         return output
 
-    def mp4_gt(self, eid: int, mode: str, on_step=None) -> Path:
+    def mp4_gt(self, eid: int, mode: str, on_step=None,
+               betas_mean: bool = False) -> Path:
         """「仅原始 GT」2D overlay（GT 手 + GT 相机，单画面），不跑推理。缓存名带 _gt，与 ckpt 无关。"""
-        key = (eid, mode, "gt", "gt")
+        key = (eid, mode, "gt", "gt", bool(betas_mean))
         cached = self._mp4.get(key)
         if cached and cached.exists():
             return cached
-        with self._key_lock(f"mp4gt{eid}:{mode}"):
+        with self._key_lock(f"mp4gt{eid}:{mode}:{int(betas_mean)}"):
             cached = self._mp4.get(key)
             if cached and cached.exists():
                 return cached
@@ -2808,7 +2957,9 @@ class Store:
             raw = self.raw(eid)
             ep_idx = raw["episode_index"]
             source_tag = self._item_cache_tag(eid)
-            out_path = self.cache_dir / f"{self.scene}_{source_tag}_ep{ep_idx:03d}_{mode}_gt_{compare.CACHE_TAG}.mp4"
+            out_path = self.cache_dir / (
+                f"{self.scene}_{source_tag}_ep{ep_idx:03d}_{mode}_"
+                f"gt_{int(betas_mean)}_{compare.CACHE_TAG}.mp4")
             if not out_path.exists():
                 pk = self.prog2d_key(eid, mode, "gt", "gt", raw=True)
 
@@ -2819,7 +2970,60 @@ class Store:
 
                 compare.render_gt_overlay(raw, out_path, mode=mode, fps=self.item_fps(eid),
                                           on_step=report_step,
-                                          gt_world_data=self._gtw.get((eid, False)))
+                                          betas_mean=betas_mean,
+                                          gt_world_data=self._gtw.get((eid, betas_mean)),
+                                          presence_text="")
+            self._mp4[key] = out_path
+        return self._mp4[key]
+
+    def mp4_pred(self, eid: int, mode: str,
+                  cam_mode: str = DEFAULT_CAM_MODE,
+                  hand_mode: str = DEFAULT_HAND_MODE,
+                  pred_betas_mean: bool = False,
+                  pred_fov_mean: bool = False,
+                  on_step=None) -> Path:
+        """Render one prediction-only 2D video at the original frame size."""
+        pkey = f"{int(pred_betas_mean)}{int(pred_fov_mean)}"
+        key = (eid, mode, "pred", cam_mode, hand_mode, pkey)
+        cached = self._mp4.get(key)
+        if cached and cached.exists():
+            return cached
+        with self._key_lock(
+                f"mp4pred{eid}:{mode}:{cam_mode}:{hand_mode}:{pkey}"):
+            cached = self._mp4.get(key)
+            if cached and cached.exists():
+                return cached
+            from ..render import compare
+            raw = self.raw(eid)
+            pred = self.pred(eid, cam_mode, hand_mode)
+            if pred.get("hand") is None:
+                raise RuntimeError("模型没有 hand 输出，无法渲染预测 2D 视图")
+            source_tag = self._item_cache_tag(eid)
+            out_path = self.cache_dir / (
+                f"{self.scene}_{source_tag}_{self.ckpt_tag}_"
+                f"ep{int(raw['episode_index']):03d}_{mode}_pred_"
+                f"{cam_mode}_{hand_mode}_{pkey}_{compare.CACHE_TAG}.mp4")
+            if not out_path.exists():
+                pk = self.prog2d_key(
+                    eid, mode, "overlay", "pred", raw=False,
+                    cam_mode=cam_mode, hand_mode=hand_mode,
+                    pkey=f"0{pkey}")
+
+                def report_step(done, total):
+                    self.set_prog2d(pk, int(done), int(total))
+                    if on_step is not None:
+                        on_step(int(done), int(total))
+
+                pred_world = self.pred_world(
+                    eid, cam_mode, hand_mode, pred_betas_mean)
+                hand_frame = (self.item_hand_frame(eid)
+                              if self.is_no_truth(eid) else "camera")
+                compare.render_pred_overlay(
+                    raw["frames"], pred, out_path,
+                    mode=mode, fps=self.item_fps(eid),
+                    hand_frame=hand_frame,
+                    betas_mean=pred_betas_mean, fov_mean=pred_fov_mean,
+                    pred_world_data=pred_world, on_step=report_step)
             self._mp4[key] = out_path
         return self._mp4[key]
 

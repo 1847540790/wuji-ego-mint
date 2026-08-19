@@ -27,10 +27,66 @@ RIGHT_RGBA = (0.95, 0.55, 0.72, 1.0)
 CAM_RGBA = (0.62, 0.40, 0.85, 1.0)
 CUBE_RGBA = (0.88, 0.62, 0.24, 1.0)   # 参照方块（暖橙，与蓝手/粉手/灰垫布都拉得开）
 FIXED_THIRD_FOVY = 42.0
+FIXED_THIRD_VIEW_SHIFT_LEFT = 0.12
 N_VERT = 778   # MANO 顶点数
+# MuJoCo and Wuji retargeting use the same neutral background.  Keep these
+# values here so the two XML scene builders cannot silently drift apart.
+ROBOT_GROUND_RGB1 = (0.19, 0.23, 0.23)
+ROBOT_GROUND_RGB2 = (0.34, 0.38, 0.37)
+ROBOT_GROUND_TEXREPEAT = 12
+ROBOT_GROUND_HALF_RANGE = (4.0, 8.0)
+ROBOT_GROUND_RADIUS_SCALE = 1.5
+ROBOT_GROUND_RADIUS_PADDING = 1.2
+ROBOT_HEADLIGHT_AMBIENT = (0.40, 0.40, 0.40)
+ROBOT_HEADLIGHT_DIFFUSE = (0.08, 0.08, 0.08)
+ROBOT_HEADLIGHT_SPECULAR = (0.05, 0.05, 0.05)
+ROBOT_KEY_DIFFUSE = (0.50, 0.50, 0.50)
+ROBOT_KEY_SPECULAR = (0.10, 0.10, 0.10)
+ROBOT_HAND_SPECULAR = 0.20
+ROBOT_HAND_SHININESS = 0.30
+ROBOT_SHADOWCLIP = 2.5
+ROBOT_SHADOWSCALE = 1.0
+ROBOT_ZNEAR = 0.02
+ROBOT_ZFAR = 12.0
 # ghost 残影的「向白混合」权重区间：最老 _GHOST_W0(最淡) → 最新 _GHOST_W1(最接近本色)。
 _GHOST_W0, _GHOST_W1 = 0.28, 0.78
 _EGO_FLOOR_HALF_RANGE = (12.0, 24.0)
+
+
+def robot_ground_half_extent(points: np.ndarray, up=(0.0, 0.0, 1.0)) -> float:
+    """Return the shared square ground half-size for MuJoCo and Wuji scenes."""
+    values = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    values = values[np.all(np.isfinite(values), axis=1)]
+    if not len(values):
+        return float(ROBOT_GROUND_HALF_RANGE[0])
+    normal = np.asarray(up, dtype=np.float64)
+    normal /= max(1e-9, float(np.linalg.norm(normal)))
+    # The mean is rotation-equivariant, unlike an axis-aligned bbox center;
+    # MuJoCo first uprights the world while Wuji keeps the source basis.
+    center = values.mean(axis=0)
+    horizontal = values - np.outer((values - center) @ normal, normal)
+    horizontal_center = center - normal * float(center @ normal)
+    radius = float(np.percentile(
+        np.linalg.norm(horizontal - horizontal_center, axis=1), 98.0))
+    return float(np.clip(
+        radius * ROBOT_GROUND_RADIUS_SCALE + ROBOT_GROUND_RADIUS_PADDING,
+        *ROBOT_GROUND_HALF_RANGE))
+
+
+def robot_key_light_pose(up: np.ndarray, hand_points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return the shared slanted key-light pose for both robot renderers."""
+    normal = np.asarray(up, dtype=np.float64)
+    normal /= max(1e-9, float(np.linalg.norm(normal)))
+    lateral = np.cross(normal, np.asarray([1.0, 0.0, 0.0]))
+    if float(np.linalg.norm(lateral)) < 1e-6:
+        lateral = np.cross(normal, np.asarray([0.0, 1.0, 0.0]))
+    lateral /= max(1e-9, float(np.linalg.norm(lateral)))
+    direction = -normal + 0.35 * lateral + 0.2 * np.cross(normal, lateral)
+    direction /= max(1e-9, float(np.linalg.norm(direction)))
+    points = np.asarray(hand_points, dtype=np.float64).reshape(-1, 3)
+    points = points[np.all(np.isfinite(points), axis=1)]
+    center = points.mean(axis=0) if len(points) else np.zeros(3)
+    return center + normal * 1.6 - lateral * 0.6, direction
 
 
 def fixed_third_camera_pose(up: np.ndarray, hand_points: np.ndarray,
@@ -65,7 +121,58 @@ def fixed_third_camera_pose(up: np.ndarray, hand_points: np.ndarray,
     vertical_tangent = np.tan(np.radians(float(fovy)) / 2.0)
     limiting_tangent = min(vertical_tangent, vertical_tangent * float(aspect))
     distance = radius / max(0.1, limiting_tangent) * 1.12
-    return target + observer * distance, target, up, radius
+    position = target + observer * distance
+    # Pan the camera rig slightly toward screen-left.  Content near the left
+    # crop edge then moves right into the safe area without zooming out.
+    view_forward = target - position
+    view_forward /= max(1e-9, float(np.linalg.norm(view_forward)))
+    screen_right = np.cross(view_forward, up)
+    screen_right /= max(1e-9, float(np.linalg.norm(screen_right)))
+    shift = -screen_right * radius * FIXED_THIRD_VIEW_SHIFT_LEFT
+    return position + shift, target + shift, up, radius
+
+
+def _rotation_align(source: np.ndarray, target: np.ndarray) -> np.ndarray:
+    source = np.asarray(source, dtype=np.float64)
+    target = np.asarray(target, dtype=np.float64)
+    source /= max(1e-9, float(np.linalg.norm(source)))
+    target /= max(1e-9, float(np.linalg.norm(target)))
+    cross = np.cross(source, target)
+    cosine = float(np.dot(source, target))
+    if float(np.linalg.norm(cross)) < 1e-8:
+        return np.eye(3) if cosine > 0 else np.diag([1.0, -1.0, -1.0])
+    skew = np.asarray([
+        [0.0, -cross[2], cross[1]],
+        [cross[2], 0.0, -cross[0]],
+        [-cross[1], cross[0], 0.0],
+    ])
+    return np.eye(3) + skew + skew @ skew * (1.0 / (1.0 + cosine))
+
+
+def canonicalize_robot_coordinates(cameras: np.ndarray,
+                                    hand_points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Use one upright/centered gauge for MuJoCo and Wuji camera overlays."""
+    transforms = np.asarray(cameras, dtype=np.float64).copy()
+    points = np.asarray(hand_points, dtype=np.float64).reshape(-1, 3)
+    finite_points = points[np.all(np.isfinite(points), axis=1)]
+    if transforms.ndim != 3 or transforms.shape[1:] != (4, 4):
+        raise ValueError("robot camera poses must have shape [T,4,4]")
+    if not len(finite_points):
+        finite_points = np.zeros((1, 3), dtype=np.float64)
+    down = transforms[:, :3, 1]
+    down = down[np.all(np.isfinite(down), axis=1)]
+    if len(down) and float(np.linalg.norm(down.mean(axis=0))) >= 1e-6:
+        up = -down.mean(axis=0)
+        up /= max(1e-9, float(np.linalg.norm(up)))
+    else:
+        up = np.asarray([0.0, 0.0, 1.0], dtype=np.float64)
+    rotation = _rotation_align(up, np.asarray([0.0, 0.0, 1.0]))
+    transformed_points = finite_points @ rotation.T
+    transforms[:, :3, :3] = rotation[None] @ transforms[:, :3, :3]
+    transforms[:, :3, 3] = transforms[:, :3, 3] @ rotation.T
+    origin = np.median(transformed_points, axis=0)
+    transforms[:, :3, 3] -= origin
+    return rotation, origin, transforms
 
 
 def configure_fixed_camera(scene, position: np.ndarray, target: np.ndarray,
@@ -241,24 +348,24 @@ class HandWorldScene:
   <visual>
     <global offwidth="{self.width}" offheight="{self.height}" azimuth="140" elevation="20"/>
     <quality shadowsize="4096" offsamples="2"/>
-    <!-- 环境光压低、方向光提亮 → 手在垫布上的投影才有明暗差看得见（原 ambient=0.82 把阴影冲没了）。 -->
-    <headlight ambient="0.40 0.40 0.40" diffuse="0.08 0.08 0.08" specular="0.05 0.05 0.05"/>
+    <!-- 环境光压低、方向光提亮 → 手在地面上的投影才有明暗差看得见。 -->
+    <headlight ambient="{' '.join(f'{v:.2f}' for v in ROBOT_HEADLIGHT_AMBIENT)}" diffuse="{' '.join(f'{v:.2f}' for v in ROBOT_HEADLIGHT_DIFFUSE)}" specular="{' '.join(f'{v:.2f}' for v in ROBOT_HEADLIGHT_SPECULAR)}"/>
     <!-- shadowclip 收紧贴合场景、shadowscale 收窄阴影视锥 → 去掉 shadow acne 噪点、
          让方向光在垫布上投出干净的接触阴影（原 shadowclip=10 太大导致 shadow map 分辨率浪费、满屏噪点）。
          取景改为「手 + 相机轨迹一起入画」后场景跨度变大（~1m），1.6 会把远端阴影裁掉，放宽到 2.5。 -->
-    <map shadowclip="2.5" shadowscale="1.0" znear="0.02" zfar="12"/>
+    <map shadowclip="{ROBOT_SHADOWCLIP}" shadowscale="{ROBOT_SHADOWSCALE}" znear="{ROBOT_ZNEAR}" zfar="{ROBOT_ZFAR}"/>
   </visual>
   <asset>
     <texture type="skybox" builtin="gradient" rgb1="0.95 0.96 0.98" rgb2="0.78 0.82 0.88"
              width="512" height="512"/>
-    <texture name="ground_grid" type="2d" builtin="checker" rgb1="0.19 0.23 0.23"
-             rgb2="0.34 0.38 0.37" width="512" height="512"/>
+    <texture name="ground_grid" type="2d" builtin="checker" rgb1="{' '.join(f'{v:.2f}' for v in ROBOT_GROUND_RGB1)}"
+             rgb2="{' '.join(f'{v:.2f}' for v in ROBOT_GROUND_RGB2)}" width="512" height="512"/>
     <!-- 衬底(浅)与操作垫布(略深)分两材质：垫布比衬底暗一档，边界读得出、投影落上去也有明暗差。 -->
-    <material name="ground" texture="ground_grid" texrepeat="12 12" texuniform="true"
+    <material name="ground" texture="ground_grid" texrepeat="{ROBOT_GROUND_TEXREPEAT} {ROBOT_GROUND_TEXREPEAT}" texuniform="true"
               rgba="1 1 1 1" reflectance="0.0" specular="0.0" shininess="0.0"/>
     <material name="mat" rgba="0.55 0.56 0.61 1.0" reflectance="0.0" specular="0.0" shininess="0.0"/>
-    <material name="mL" rgba="{_rgba(LEFT_RGBA)}" specular="0.2" shininess="0.3"/>
-    <material name="mR" rgba="{_rgba(RIGHT_RGBA)}" specular="0.2" shininess="0.3"/>
+    <material name="mL" rgba="{_rgba(LEFT_RGBA)}" specular="{ROBOT_HAND_SPECULAR}" shininess="{ROBOT_HAND_SHININESS}"/>
+    <material name="mR" rgba="{_rgba(RIGHT_RGBA)}" specular="{ROBOT_HAND_SPECULAR}" shininess="{ROBOT_HAND_SHININESS}"/>
     <!-- 参照方块：暖橙，与蓝手/粉手/灰垫布都拉开；高光稍强 → 三个面明暗分明，一眼看出是立方体。 -->
     <material name="mcube" rgba="{_rgba(CUBE_RGBA)}" specular="0.35" shininess="0.45"/>
     {_mesh_xml("hand_L", init_l, faces_left)}
@@ -267,7 +374,7 @@ class HandWorldScene:
   </asset>
   <worldbody>
     <light name="key" pos="0.3 0.3 2" dir="-0.2 -0.2 -1" directional="true" castshadow="true"
-           diffuse="0.5 0.5 0.5" specular="0.1 0.1 0.1"/>
+           diffuse="{' '.join(f'{v:.2f}' for v in ROBOT_KEY_DIFFUSE)}" specular="{' '.join(f'{v:.2f}' for v in ROBOT_KEY_SPECULAR)}"/>
     {floor_xml}
     {mat_xml}
     {cube_xml}
@@ -361,7 +468,8 @@ class HandWorldScene:
         a[3] = info["rgba0"][3] if visible else 0.0
         self.model.geom_rgba[info["gid"]] = a
 
-    def place_floor(self, points: np.ndarray, margin=0.03, fwd_az=None):
+    def place_floor(self, points: np.ndarray, margin=0.03, fwd_az=None,
+                    extent_points: np.ndarray | None = None):
         """把浅灰地面与深灰垫布放到手部点云正下方：地面接地、垫布居中且按手水平范围定尺寸。
 
         地面/垫布是薄 box（避免 plane 的掠射 shadow acne），box 的顶面 = 中心 z + 半高，
@@ -375,10 +483,15 @@ class HandWorldScene:
         pts = pts[np.all(np.isfinite(pts), axis=1)]
         if not len(pts):
             return
+        extent = pts if extent_points is None else np.asarray(
+            extent_points, dtype=np.float64).reshape(-1, 3)
+        extent = extent[np.all(np.isfinite(extent), axis=1)]
+        if not len(extent):
+            extent = pts
         # 稳健包围盒（2–98 百分位）定手水平运动范围，避免无效帧/离群点把垫布撑大。
+        cxy = pts[:, :2].mean(axis=0)
         lo = np.percentile(pts, 2, axis=0)
         hi = np.percentile(pts, 98, axis=0)
-        cxy = (lo[:2] + hi[:2]) / 2.0
         half = (hi[:2] - lo[:2]) / 2.0
         # z 下界用近最低分位（0.1%）：传入的是网格顶点，取近最低点让手最低接触帧真正贴地、
         # 又避开个别离群顶点；再减 margin 留极小间隙，保证网格不穿出地台。
@@ -395,14 +508,18 @@ class HandWorldScene:
         self.model.body_pos[self._floor_bid] = bp
         self.model.body_quat[self._floor_bid] = ground_quat
         fs = np.array(self.model.geom_size[self._floor_gid])
-        fs[0] = float(max(half)) * 2.4 + 0.20
-        fs[1] = float(max(half)) * 2.4 + 0.20
+        shared_half = robot_ground_half_extent(extent)
+        fs[0] = fs[1] = shared_half
         self.model.geom_size[self._floor_gid] = fs
         # _mat_center/_mat_half 记手运动区域中心与半范围（供 mujoco_view 取景留白用；非地台整体尺寸）。
         self._mat_center = np.array([cxy[0], cxy[1], zmin])
         self._mat_half = half.copy()
         # 手部 3D 半径（稳健 90 分位）：ego 垫布尺寸/景深按它派生，保证垫布刚好裹住双手。
         self._hand_rad = float(np.percentile(np.linalg.norm(pts - pts.mean(0), axis=1), 90))
+        light_pos, light_dir = robot_key_light_pose(np.asarray([0.0, 0.0, 1.0]), pts)
+        if self._light_id >= 0:
+            self.model.light_pos[self._light_id] = light_pos
+            self.model.light_dir[self._light_id] = light_dir
         # 操作垫布(matb)：比衬底小一圈(裹住手运动范围)、顶面略高于衬底避免 z-fight。
         # 有 fwd_az 时按操作者坐标系(右向 ex、前向 ey)量取半范围并绕 z 旋转，使垫布对齐操作方向。
         if fwd_az is not None:
